@@ -7,17 +7,21 @@ template <class T> T* Resource<T>::get() {
 		return ret;
 	}
 	else {
-		ResourceBatch* new_head = new ResourceBatch;
-		new_head->next = head;
-		head = new_head;
+		batches.push_front(new T[batch]);
 		for(int i = 1; i < batch; i++) {
-			available.push_back(&head->Ts[i]);
+			available.push_back(&batches.front()[i]);
 		}
-		return &head->Ts[0];
+		return &batches.front()[0];
 	}
 }
 
 template <class T> void Resource<T>::release(T* p) { available.push_front(p); }
+
+template <class T> Resource<T>::~Resource() {
+	for(typename std::forward_list<T*>::iterator i = batches.begin(); i != batches.end(); ++i) {
+		delete *i;
+	}
+}
 
 template class Resource<point>;
 template class Resource<bezier>;

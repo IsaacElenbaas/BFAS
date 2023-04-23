@@ -1,4 +1,8 @@
 #ifndef UI_H
 #define UI_H
-inline void set_pixel(int x, int y, int r, int g, int b, int a);
+bool set_pixel(const point& p, int r, int g, int b, int a);
+void paint_handle(const point& p);
+void paint_line(const point& p1, const point& p2);
+void paint_flush();
+void repaint();
 #endif

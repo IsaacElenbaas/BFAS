@@ -1,4 +1,5 @@
 #include <deque>
+#include <forward_list>
 #include "types.h"
 
 #define batch 10
@@ -6,12 +7,9 @@
 template<typename T>
 class Resource {
 	std::deque<T*> available;
-	struct ResourceBatch {
-		T Ts[batch];
-		ResourceBatch* next = NULL;
-	};
-	ResourceBatch* head = NULL;
+	std::forward_list<T*> batches;
 public:
 	T* get();
 	void release(T* p);
+	~Resource();
 };
