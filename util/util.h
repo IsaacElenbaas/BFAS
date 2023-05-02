@@ -23,6 +23,5 @@ inline int dot_sign(const point& p1, const point& p2) {
 }
 
 bool line_right(const point& p, const point& a, const point& b);
-
-bool bezier_right(const point& pnt, const bezier& bez);
+int bezier_inc_exc(const point& p, const bezier& b, bool left);
 #endif

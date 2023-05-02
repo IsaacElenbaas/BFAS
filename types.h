@@ -2,6 +2,7 @@
 #define TYPES_H
 #include <algorithm>
 #include <cmath>
+#include <forward_list>
 #include <limits>
 #include <tuple>
 
@@ -11,6 +12,9 @@ struct bezier;
 struct point {
 	int x, y;
 	int use_count = 0;
+	std::forward_list<bezier*> used_by;
+	void add_to(bezier* b) { use_count++; used_by.remove(b); used_by.push_front(b); }
+	void remove_from(bezier* b);
 	bool in(const point& tl, const point& br) const {
 		if(
 			x >= tl.x && y >= tl.y &&
@@ -29,9 +33,9 @@ struct point {
 		return n%2 != 0;
 	}
 	bool in(const bezier* b) const;
-	constexpr point right() const { return {-this->y, this->x}; }
-	constexpr point(int x1 = 0, int y1 = 0) : x(x1), y(y1) {}
-	constexpr point(const point& rhs) : x(rhs.x), y(rhs.y) {}
+	point right() const { return {-this->y, this->x}; }
+	point(int x1 = 0, int y1 = 0) : x(x1), y(y1), used_by() {}
+	point(const point& rhs) : x(rhs.x), y(rhs.y), used_by() {}
 	point& operator=(const point& rhs) {
 		x = rhs.x; y = rhs.y;
 		return *this;
@@ -122,6 +126,11 @@ struct bezier {
 	}
 };
 
+inline void point::remove_from(bezier* b) {
+	use_count--;
+	if(b->a1 != this && b->h1 != this && b->a2 != this && b->h2 != this)
+		used_by.remove(b);
+}
 inline bool point::in(const bezier* b) const { return in(*b->a1, *b->h1, *b->a2, *b->h2) || in(*b->a1, *b->h1, *b->h2, *b->a2); }
 extern bool line_right(const point& p, const point& a, const point& b);
 inline bool point::in(const point& a, const point& b, const point& c) const {

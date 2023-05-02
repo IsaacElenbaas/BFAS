@@ -68,51 +68,14 @@ void paint() {
 	{
 		QuadTree<bezier>::Region region = bezier_QT.region(state.tl, state.br);
 		for(bezier* b = region.next(false); b != NULL; b = region.next(false)) {
-			//bool line_right(const point& p, const point& a, const point& b)
-			bool right = true;
-			point a1 = *b->a1, h1 = *b->h1, a2 = *b->a2, h2 = *b->h2;
-			if(a1 == h1 && a2 == h2) {
-				for(int x = 0; x < w; x++) {
-					for(int y = 0; y < h; y++) {
-						if(line_right(s2a({x, y}), a1, a2)) set_pixel({x, y}, 0, 255, 0, 64);
-					}
-				}
-			}
-			else {
-				// TODO: include anything in green or self
-				//       exclude anything in own bounding box but not self
-				//       exclude anything in the two spaces made by own handles and neighbors'
-				//           this will need to be handled differently when making corners
-				if(h1 == a1) h1 = h2;
-				else if(h2 == a2) h2 = h1;
-				for(int x = 0; x < w; x++) {
-					for(int y = 0; y < h; y++) {
-						point p = s2a({x, y});
-						if(p.in(b)) {
-							if(right == bezier_right(p, *b))
-								set_pixel({x, y}, 0, 0, 255, 64);
-						}
-						else {
-							bool center = (line_right(p, a1, h1) == line_right(a2, a1, h1)) &&
-							              (line_right(p, a2, h2) == line_right(a1, a2, h2));
-							if(center && (right == line_right(p, a1, a2))) {
-								set_pixel({x, y}, 0, 255, 0, 64);
-								continue;
-							}
-							point right = (a2-a1).right();
-							bool h1_r = dot_sign(h1-a1, right) > 0;
-							bool h2_r = dot_sign(h2-a2, right) > 0;
-							// right/left of handle
-							bool roh =  line_right(p, a1, h1);
-							bool loh = !line_right(p, a2, h2);
-							// crop by other line (sometimes) unless is an S curve
-							if((h1_r && h2_r && (roh || loh)) ||
-								(h1_r && roh && (loh || dot_sign(h1-a1, (h2-a2).right()) < 0)) ||
-								(h2_r && loh && (roh || dot_sign(h2-a2, (h1-a1).right()) > 0))
-							)
-								set_pixel({x, y}, 0, 128, 128, 64);
-						}
-					}
+			// TODO
+			for(int x = 0; x < w; x++) {
+				for(int y = 0; y < h; y++) {
+					int res = bezier_inc_exc(s2a({x, y}), *b, false);
+					if(res == 1)
+						set_pixel({x, y}, 0, 255, 0, 64);
+					else if(res == -1)
+						set_pixel({x, y}, 255, 0, 0, 64);
 				}
 			}
 			paint_bezier(*b, false);
@@ -161,7 +124,8 @@ void key_release(int key) {
 					state.b = bezier_RS.get();
 					state.b->a1 = point_RS.get();
 					*state.b->a1 = s2a(mouse);
-					state.b->a1->use_count = 1;
+					state.b->a1->use_count = 0;
+					(*state.b->a1).add_to(state.b);
 					point_QT.insert(state.b->a1);
 				}
 				else {
@@ -170,16 +134,17 @@ void key_release(int key) {
 					mouse_release(true, mouse.x, mouse.y);
 					state.b = bezier_RS.get();
 					state.b->a1 = last->a2;
-					last->a2->use_count++;
+					(*last->a2).add_to(state.b);
 				}
 				state.b->h1 = state.b->a1;
-				state.b->h1->use_count++;
+				(*state.b->h1).add_to(state.b);
 				state.b->a2 = point_RS.get();
 				*state.b->a2 = s2a(mouse);
-				state.b->a2->use_count = 1;
+				state.b->a2->use_count = 0;
+				(*state.b->a2).add_to(state.b);
 				point_QT.insert(state.b->a2);
 				state.b->h2 = state.b->a2;
-				state.b->h2->use_count++;
+				(*state.b->h2).add_to(state.b);
 				bezier_QT.insert(state.b);
 				state.p = state.b->a2;
 				state.p_o = {0, 0};
@@ -205,28 +170,29 @@ void mouse_move(int x, int y) {
 				if(state.p->use_count > 1) {
 					if(pow(state.p_last.x-state.p->x, 2)+pow(state.p_last.y-state.p->y, 2) > pow((8.0/w)*cmax, 2)+pow((8.0/h)*cmax, 2)) {
 						point **p1 = NULL, **p2 = NULL;
+						bezier* p2_b;
 						QuadTree<bezier>::Region region;
 						if(state.p_prefer == NULL) {
 							region = bezier_QT.region(tl, br);
 							for(bezier* b = region.next(false); b != NULL; b = region.next(false)) {
-								if(     b->a1 == state.p && b->h1 == state.p) { p1 = &b->a1; p2 = &b->h1; break; }
-								else if(b->a2 == state.p && b->h2 == state.p) { p1 = &b->a2; p2 = &b->h2; break; }
+								if(     b->a1 == state.p && b->h1 == state.p) { p1 = &b->a1; p2 = &b->h1; p2_b = b; break; }
+								else if(b->a2 == state.p && b->h2 == state.p) { p1 = &b->a2; p2 = &b->h2; p2_b = b; break; }
 							}
 						}
 						// TODO: once colors are done check for those between handles and anchors
 						if(p1 == NULL) {
-							if(state.p_prefer != NULL) p2 = state.p_prefer;
+							if(state.p_prefer != NULL) { p2 = state.p_prefer; p2_b = (*p2)->used_by.front(); }
 							else {
 								region = bezier_QT.region(tl, br);
 								for(bezier* b = region.next(false); b != NULL; b = region.next(false)) {
-									if(     b->h1 == state.p) { p2 = &b->h1; break; }
-									else if(b->h2 == state.p) { p2 = &b->h2; break; }
+									if(     b->h1 == state.p) { p2 = &b->h1; p2_b = b; break; }
+									else if(b->h2 == state.p) { p2 = &b->h2; p2_b = b; break; }
 								}
 								if(p2 == NULL) {
 									region = bezier_QT.region(tl, br);
 									for(bezier* b = region.next(false); b != NULL; b = region.next(false)) {
-										if(     b->a1 == state.p) { p2 = &b->a1; break; }
-										else if(b->a2 == state.p) { p2 = &b->a2; break; }
+										if(     b->a1 == state.p) { p2 = &b->a1; p2_b = b; break; }
+										else if(b->a2 == state.p) { p2 = &b->a2; p2_b = b; break; }
 									}
 								}
 							}
@@ -244,10 +210,11 @@ void mouse_move(int x, int y) {
 							}
 						}
 						**p1 = state.p_last;
-						(*p1)->use_count--;
 						*p2 = point_RS.get();
+						(**p1).remove_from(p2_b);
 						// position will be updated below
-						(*p2)->use_count = 1;
+						(*p2)->use_count = 0;
+						(**p2).add_to(p2_b);
 						point_QT.insert(*p2);
 						state.p = *p2;
 					}
@@ -267,12 +234,13 @@ void mouse_move(int x, int y) {
 					if(!close.empty()) {
 						QuadTree<bezier>::Region region = bezier_QT.region(tl, br);
 						for(bezier* b = region.next(false); b != NULL; b = region.next(false)) {
-							if(b->a1 == state.p) { b->a1 = close[0]; close[0]->use_count++; state.p_prefer = &b->a1; break; }
-							if(b->h1 == state.p) { b->h1 = close[0]; close[0]->use_count++; state.p_prefer = &b->h1; break; }
-							if(b->a2 == state.p) { b->a2 = close[0]; close[0]->use_count++; state.p_prefer = &b->a2; break; }
-							if(b->h2 == state.p) { b->h2 = close[0]; close[0]->use_count++; state.p_prefer = &b->h2; break; }
+							if(b->a1 == state.p) { b->a1 = close[0]; (*close[0]).add_to(b); state.p_prefer = &b->a1; break; }
+							if(b->h1 == state.p) { b->h1 = close[0]; (*close[0]).add_to(b); state.p_prefer = &b->h1; break; }
+							if(b->a2 == state.p) { b->a2 = close[0]; (*close[0]).add_to(b); state.p_prefer = &b->a2; break; }
+							if(b->h2 == state.p) { b->h2 = close[0]; (*close[0]).add_to(b); state.p_prefer = &b->h2; break; }
 							// TODO: colors
 						}
+						(*state.p).remove_from(state.p->used_by.front());
 						point_QT.remove(state.p);
 						point_RS.release(state.p);
 						state.p = close[0];
@@ -294,10 +262,16 @@ void mouse_move(int x, int y) {
 				for(bezier* b = region.next(false); b != NULL; b = region.next(false)) {
 					if(b->a1 == state.p || b->h1 == state.p || b->a2 == state.p || b->h2 == state.p) {
 						// TODO: if split but haven't ever moved will stay split unless they go outside this forbidden range before releasing
-						if((*b->a1).in(*b->a2, *b->h1, *b->h2) || (*b->a2).in(*b->a1, *b->h1, *b->h2)) {
+						// TODO: what happens if they release while this is happening?
+						//       (answer: bad things - needs fixing)
+						if(
+							(*b->h1 != *b->h2 || (*b->h1 != *b->a1 && *b->h1 != *b->a2)) &&
+							((*b->a1).in(*b->a2, *b->h1, *b->h2) || (*b->a2).in(*b->a1, *b->h1, *b->h2))
+						) {
 							*state.p = last;
 							point_QT.insert(state.p);
 							// don't update mouse so this can repeat
+							// TODO: not painting here, but not blocking it elsewhere. . . maybe have a "in illegal point position" bool which ignores all other events to fix that and the above
 							return;
 						}
 					}
@@ -305,7 +279,7 @@ void mouse_move(int x, int y) {
 				point_QT.insert(state.p);
 				// TODO: adjust paint_bezier or something to only repaint over where it used to be and where it is going
 				//       slow rendering is fine, but bad when having to do it so often while moving things
-				//       actually maybe fine now with paint_bezier improvements, probably going to have to do color rendering on GPU anyway
+				//       actually maybe fine now with paint_bezier improvements, going to have to do color rendering on GPU anyway
 				repaint();
 			}
 			break;
