@@ -1,17 +1,19 @@
 #ifndef MAIN_H
 #define MAIN_H
+#include <QOpenGLShaderProgram>
+#include <QOpenGLWidget>
 #include <QPaintEvent>
 #include <QPainter>
-#include <QWidget>
-#include "../PFAS.h"
+#include "PFAS.h"
 
+extern QOpenGLShaderProgram* program;
 extern QPainter* painter;
 extern QImage* pixels;
 
-class Canvas : public QWidget {
+class Canvas : public QOpenGLWidget {
 	Q_OBJECT
 public:
-	Canvas(QWidget* obj=0) : QWidget(obj) {
+	Canvas(QWidget* parent = NULL) : QOpenGLWidget(parent) {
 		w = width();
 		h = height();
 		painter = new QPainter();
@@ -22,16 +24,16 @@ public:
 		delete painter;
 		delete pixels;
 	}
-	virtual void paintEvent(QPaintEvent* event);
+	virtual void initializeGL();
+	virtual void paintGL();
 	virtual void wheelEvent(QWheelEvent* event);
 	virtual void keyReleaseEvent(QKeyEvent* event);
 	virtual void mouseMoveEvent(QMouseEvent* event);
 	virtual void mousePressEvent(QMouseEvent* event);
 	virtual void mouseReleaseEvent(QMouseEvent* event);
 	virtual void mouseDoubleClickEvent(QMouseEvent* event);
-	virtual void resizeEvent(QResizeEvent*) {
-		w = width();
-		h = height();
+	virtual void resizeGL(int w, int h) {
+		::w = w; ::h = h;
 		delete pixels;
 		pixels = new QImage(w, h, QImage::Format_ARGB32);
 		zoom(0);

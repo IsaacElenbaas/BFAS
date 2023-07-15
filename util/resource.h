@@ -1,8 +1,9 @@
+#ifndef RESOURCE_H
+#define RESOURCE_H
 #include <deque>
 #include <forward_list>
-#include "types.h"
 
-#define batch 10
+#define RESOURCE_BATCH 10
 
 template<typename T>
 class Resource {
@@ -13,3 +14,4 @@ public:
 	void release(T* p);
 	~Resource();
 };
+#endif

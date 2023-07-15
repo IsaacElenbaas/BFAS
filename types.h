@@ -5,10 +5,15 @@
 #include <forward_list>
 #include <limits>
 #include <tuple>
+#include "resource.h"
 
 #define cmax std::numeric_limits<int>::max()
 
 struct bezier;
+struct point;
+extern Resource<point> point_RS;
+extern Resource<bezier> bezier_RS;
+
 struct point {
 	int x, y;
 	int use_count = 0;
@@ -60,6 +65,8 @@ struct point {
 	point operator-=(const point& rhs) { *this = *this-rhs; return *this; }
 	point operator*=(double rhs) { *this = *this*rhs; return *this; }
 	point operator/=(double rhs) { *this = *this/rhs; return *this; }
+	point* clone() { point* ret = point_RS.get(); *ret = *this; return ret; }
+	void release() { point_RS.release(this); }
 };
 
 inline bool line_rect_intersect(const point& a, const point& b, const point& tl, const point& br) {
@@ -84,6 +91,7 @@ inline bool line_rect_intersect(const point& a, const point& b, const point& tl,
 extern point t_a1, t_h1, t_a2, t_h2;
 struct bezier {
 	point *a1, *h1, *a2, *h2;
+	point* endpoint(bool left) { return (!left) ? a2 : a1; }
 	bezier split(double t, bool left) const {
 		if(left) {
 			// h1 may point to t_h1, would break .split().split()
@@ -123,6 +131,21 @@ struct bezier {
 			(int)round(pow(1-t,3)*a1->x+3*t*pow(1-t,2)*h1->x+3*pow(t,2)*(1-t)*h2->x+pow(t,3)*a2->x),
 			(int)round(pow(1-t,3)*a1->y+3*t*pow(1-t,2)*h1->y+3*pow(t,2)*(1-t)*h2->y+pow(t,3)*a2->y)
 		};
+	}
+	bezier* clone() {
+		bezier* ret = bezier_RS.get();
+		ret->a1 = a1->clone();
+		ret->h1 = h1->clone();
+		ret->a2 = a2->clone();
+		ret->h2 = h2->clone();
+		return ret;
+	}
+	void release() {
+		a1->remove_from(this); if(a1->use_count == 0) a1->release();
+		h1->remove_from(this); if(h1->use_count == 0) h1->release();
+		a2->remove_from(this); if(a2->use_count == 0) a2->release();
+		h2->remove_from(this); if(h2->use_count == 0) h2->release();
+		bezier_RS.release(this);
 	}
 };
 

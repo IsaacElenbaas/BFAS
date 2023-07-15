@@ -1,8 +1,11 @@
-// TODO: don't include .h
+#include <QOpenGLShaderProgram>
+#include <QOpenGLWidget>
 #include <QPainter>
-#include <QWidget>
+#include "UI.h"
 
-extern QWidget* canvas;
+extern QOpenGLWidget* canvas;
+QOpenGLShaderProgram* program;
+GLuint u_depth;
 QPainter* painter;
 QImage* pixels;
 
@@ -39,7 +42,7 @@ void paint_handle(const point& p) {
 
 void paint_flush() {
 	painter->drawImage(0, 0, *pixels);
-	pixels->fill(qRgba(0, 0, 0, 255));
+	pixels->fill(qRgba(0, 0, 0, 0));
 }
 
 void repaint() { canvas->repaint(); }
