@@ -128,8 +128,8 @@ struct bezier {
 	}
 	point operator[](double t) const {
 		return {
-			(int)round(pow(1-t,3)*a1->x+3*t*pow(1-t,2)*h1->x+3*pow(t,2)*(1-t)*h2->x+pow(t,3)*a2->x),
-			(int)round(pow(1-t,3)*a1->y+3*t*pow(1-t,2)*h1->y+3*pow(t,2)*(1-t)*h2->y+pow(t,3)*a2->y)
+			(int)round(pow(1-t,3)*a1->x+3*t*pow(1-t,2)*h1->x+3*(1-t)*pow(t,2)*h2->x+pow(t,3)*a2->x),
+			(int)round(pow(1-t,3)*a1->y+3*t*pow(1-t,2)*h1->y+3*(1-t)*pow(t,2)*h2->y+pow(t,3)*a2->y)
 		};
 	}
 	bezier* clone() {

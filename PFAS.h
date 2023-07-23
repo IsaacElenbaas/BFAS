@@ -6,6 +6,7 @@ extern int w, h;
 
 extern point mouse;
 void paint();
+void detect_shapes();
 void zoom(double amount);
 void key_release(int key);
 void mouse_move(int x, int y);

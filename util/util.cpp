@@ -44,7 +44,7 @@ int bezier_crosses(const point& pnt, const bezier& bez) {
 		double t = x[i];
 		point p = bez[x[i]];
 		// p comparisons fix horizontal lines at anchor intersections
-		if(t < 0 || t > 1 || p == *(bez.a1) || p == *(bez.a2)) {
+		if(t <= 0 || t >= 1) {
 			x[i] = x[sols-1];
 			sols--;
 		}

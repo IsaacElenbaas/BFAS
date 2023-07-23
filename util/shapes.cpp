@@ -1,7 +1,11 @@
+#include <QOpenGLExtraFunctions>
 #include <QOpenGLFunctions>
 #include <iterator>
+#include <limits>
 #include "resource.h"
 #include "shapes.h"
+// TODO: remove
+#include <iostream>
 
 /* TODO
 Multiple OpenGL object groups of shapes
@@ -57,10 +61,15 @@ void Shape::add(typeof(Shape::shape) shape) {
 		if(new_shape->size > collection->capacity-collection->used) {
 			delete[] static_cast<GLfloat*>(collection->data);
 			collection->capacity = new_shape->size;
-			collection->data = new GLfloat[2*4*collection->capacity];
-			// TODO: make SSBO?
+			collection->data = new GLfloat[6*(3+2)*collection->capacity];
+			QOpenGLFunctions* f = QOpenGLContext::currentContext()->functions();
+			f->glBindBuffer(GL_ARRAY_BUFFER, collection->vbos[0]);
+			f->glBufferData(GL_ARRAY_BUFFER, collection->capacity*6*3*sizeof(GLfloat), NULL, GL_DYNAMIC_DRAW);
+			f->glBindBuffer(GL_ARRAY_BUFFER, collection->vbos[1]);
+			f->glBufferData(GL_ARRAY_BUFFER, collection->capacity*6*2*sizeof(GLfloat), NULL, GL_DYNAMIC_DRAW);
 		}
 	}
+	new_shape->color_count = 0;
 	collection->shapes.push_front(new_shape);
 	collection->used += new_shape->size;
 }
@@ -70,92 +79,159 @@ void Shape::release() {
 	for(auto i = shape_data.begin(); i != shape_data.end(); ++i ) { (*i)->release(); }
 	shape_data.clear();
 	shape.clear();
+	color_coords.clear();
+	colors.clear();
 	shape_RS.release(this);
 }
 
 OpenGLShapeCollection::OpenGLShapeCollection() {
-	data = new GLfloat[2*4*capacity];
+	data = new GLfloat[6*(3+2)*capacity];
 	QOpenGLFunctions* f = QOpenGLContext::currentContext()->functions();
 	GLuint vbos[3];
 	f->glGenBuffers(3, vbos);
 	this->vbos[0] = vbos[0];
+	f->glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
+	f->glBufferData(GL_ARRAY_BUFFER, capacity*6*3*sizeof(GLfloat), NULL, GL_DYNAMIC_DRAW);
 	this->vbos[1] = vbos[1];
+	f->glBindBuffer(GL_ARRAY_BUFFER, vbos[1]);
+	f->glBufferData(GL_ARRAY_BUFFER, capacity*6*2*sizeof(GLfloat), NULL, GL_DYNAMIC_DRAW);
 	this->vbos[2] = vbos[2];
-	// TODO: make SSBO?
+	GLuint ssbos[2];
+	f->glGenBuffers(2, ssbos);
+	this->ssbos[0] = ssbos[0];
+	this->ssbos[1] = ssbos[1];
 }
 
 void OpenGLShapeCollection::draw() {
 	if(used == 0) return;
 	bool update = this->update;
+	bool color_update = false;
+	size_t update_index = (update) ? 0 : std::numeric_limits<size_t>::max();
+	std::vector<GLfloat> bezier_data;
 	size_t index = 0;
-	size_t length = 0;
 	for(auto i = shapes.begin(), last = shapes.before_begin(); i != shapes.end(); ) {
 		if((*i)->stale) {
+			// TODO: not cleaning these up - should probably happen in pack though
+			// TODO: leave one empty one
 			used -= (*i)->size;
 			(*i)->release();
 			update = true;
+			update_index = std::min(index, update_index);
 			i = shapes.erase_after(last);
 		}
 		else {
 			if(update || (*i)->update) {
-				// TODO: fill SSBO
 				update = true;
+				update_index = std::min(index, update_index);
 				(*i)->update = false;
 			}
+			if((*i)->color_update) {
+				color_update = true;
+				(*i)->color_update = false;
+			}
 			(*i)->stale = true;
-			index += (*i)->size;
-			length++;
+			index++;
 			last = i;
 			++i;
 		}
 	}
 	QOpenGLFunctions* f = QOpenGLContext::currentContext()->functions();
 	if(update) {
-		// position x y depth
-		// number of beziers in the shape
-		// index in the uniform VBO of the first bezier in the shape
-		GLfloat p[6*3*length], b[6*2*length];
-		// TODO: remove
-		GLfloat c[6*3*length];
+		GLfloat* p = &((GLfloat*)data)[0];
+		GLfloat* b = &((GLfloat*)data)[6*3*index];
 		size_t p_i = 0, b_i = 0;
+		size_t bezier_index = 0;
 		index = 0;
 		for(auto i = shapes.begin(); i != shapes.end(); ++i) {
-			p[p_i+ 0] = (*i)->tl.x/(double)cmax; p[p_i+ 1] = (*i)->tl.y/(double)cmax; p[p_i+ 2] = (*i)->depth; b[b_i+ 3] = (*i)->size; b[b_i+ 4] = index;
-			p[p_i+ 3] = (*i)->br.x/(double)cmax; p[p_i+ 4] = (*i)->tl.y/(double)cmax; p[p_i+ 5] = (*i)->depth; b[b_i+ 8] = (*i)->size; b[b_i+ 9] = index;
-			p[p_i+ 6] = (*i)->tl.x/(double)cmax; p[p_i+ 7] = (*i)->br.y/(double)cmax; p[p_i+ 8] = (*i)->depth; b[b_i+13] = (*i)->size; b[b_i+14] = index;
-			p[p_i+ 9] = (*i)->tl.x/(double)cmax; p[p_i+10] = (*i)->br.y/(double)cmax; p[p_i+11] = (*i)->depth; b[b_i+18] = (*i)->size; b[b_i+19] = index;
-			p[p_i+12] = (*i)->br.x/(double)cmax; p[p_i+13] = (*i)->tl.y/(double)cmax; p[p_i+14] = (*i)->depth; b[b_i+23] = (*i)->size; b[b_i+24] = index;
-			p[p_i+15] = (*i)->br.x/(double)cmax; p[p_i+16] = (*i)->br.y/(double)cmax; p[p_i+17] = (*i)->depth; b[b_i+28] = (*i)->size; b[b_i+29] = index;
-			// TODO: remove
-			c[p_i+ 0] = 0.25; c[p_i+ 1] = 0; c[p_i+ 2] = 0;
-			c[p_i+ 3] = 0.25; c[p_i+ 4] = 0; c[p_i+ 5] = 0;
-			c[p_i+ 6] = 0.25; c[p_i+ 7] = 0; c[p_i+ 8] = 0;
-			c[p_i+ 9] = 0.25; c[p_i+10] = 0; c[p_i+11] = 0;
-			c[p_i+12] = 0.25; c[p_i+13] = 0; c[p_i+14] = 0;
-			c[p_i+15] = 0.25; c[p_i+16] = 0; c[p_i+17] = 0;
+			if(index >= update_index) {
+				p[p_i+ 0] = (*i)->tl.x/(double)cmax; p[p_i+ 1] = (*i)->tl.y/(double)cmax; p[p_i+ 2] = (*i)->depth;
+				p[p_i+ 3] = (*i)->br.x/(double)cmax; p[p_i+ 4] = (*i)->tl.y/(double)cmax; p[p_i+ 5] = (*i)->depth;
+				p[p_i+ 6] = (*i)->tl.x/(double)cmax; p[p_i+ 7] = (*i)->br.y/(double)cmax; p[p_i+ 8] = (*i)->depth;
+				p[p_i+ 9] = (*i)->tl.x/(double)cmax; p[p_i+10] = (*i)->br.y/(double)cmax; p[p_i+11] = (*i)->depth;
+				p[p_i+12] = (*i)->br.x/(double)cmax; p[p_i+13] = (*i)->tl.y/(double)cmax; p[p_i+14] = (*i)->depth;
+				p[p_i+15] = (*i)->br.x/(double)cmax; p[p_i+16] = (*i)->br.y/(double)cmax; p[p_i+17] = (*i)->depth;
+				b[b_i+ 0] = (*i)->size; b[b_i+ 1] = bezier_index;
+				b[b_i+ 2] = (*i)->size; b[b_i+ 3] = bezier_index;
+				b[b_i+ 4] = (*i)->size; b[b_i+ 5] = bezier_index;
+				b[b_i+ 6] = (*i)->size; b[b_i+ 7] = bezier_index;
+				b[b_i+ 8] = (*i)->size; b[b_i+ 9] = bezier_index;
+				b[b_i+10] = (*i)->size; b[b_i+11] = bezier_index;
+			}
 			p_i += 6*3;
 			b_i += 6*2;
-			index += (*i)->size;
+			bezier_index += (*i)->size;
+			for(auto j = (*i)->shape.begin(); j != (*i)->shape.end(); ++j ) {
+				bezier* b = (*std::get<0>(*j));
+				bezier_data.insert(bezier_data.end(), {
+					(GLfloat)(b->a1->x/(double)cmax), (GLfloat)(b->a1->y/(double)cmax),
+					(GLfloat)(b->h1->x/(double)cmax), (GLfloat)(b->h1->y/(double)cmax),
+					(GLfloat)(b->a2->x/(double)cmax), (GLfloat)(b->a2->y/(double)cmax),
+					(GLfloat)(b->h2->x/(double)cmax), (GLfloat)(b->h2->y/(double)cmax)
+				});
+			}
+			index++;
 		}
+		// coordinates and bezier info
 		f->glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
-		f->glBufferData(GL_ARRAY_BUFFER, sizeof(p), p, GL_STATIC_DRAW);
+		f->glBufferSubData(GL_ARRAY_BUFFER, update_index*6*3*sizeof(GLfloat), (index-update_index)*6*3*sizeof(GLfloat), &p[update_index*6*3]);
 		f->glBindBuffer(GL_ARRAY_BUFFER, vbos[1]);
-		f->glBufferData(GL_ARRAY_BUFFER, sizeof(b), b, GL_STATIC_DRAW);
-		f->glBindBuffer(GL_ARRAY_BUFFER, vbos[2]);
-		f->glBufferData(GL_ARRAY_BUFFER, sizeof(c), c, GL_STATIC_DRAW);
-		// TODO: send SSBO
+		f->glBufferSubData(GL_ARRAY_BUFFER, update_index*6*2*sizeof(GLfloat), (index-update_index)*6*2*sizeof(GLfloat), &b[update_index*6*2]);
+		// bezier SSBO
+		f->glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbos[0]);
+		f->glBufferData(GL_SHADER_STORAGE_BUFFER, bezier_data.size()*sizeof(GLfloat), bezier_data.data(), GL_STATIC_DRAW);
 		this->update = false;
 	}
+	if(update || color_update) {
+		GLfloat c[6*2*index];
+		std::vector<GLfloat> color_data;
+		size_t c_i = 0;
+		size_t color_index = 0;
+		for(auto i = shapes.begin(); i != shapes.end(); ++i) {
+			// color info
+			c[c_i+ 0] = (*i)->color_count; c[c_i+ 1] = color_index;
+			c[c_i+ 2] = (*i)->color_count; c[c_i+ 3] = color_index;
+			c[c_i+ 4] = (*i)->color_count; c[c_i+ 5] = color_index;
+			c[c_i+ 6] = (*i)->color_count; c[c_i+ 7] = color_index;
+			c[c_i+ 8] = (*i)->color_count; c[c_i+ 9] = color_index;
+			c[c_i+10] = (*i)->color_count; c[c_i+11] = color_index;
+			// color SSBO
+			auto k = (*i)->colors.begin();
+			for(auto j = (*i)->color_coords.begin(); j != (*i)->color_coords.end(); ++j ) {
+				color_data.insert(color_data.end(), {(GLfloat)((*j)->x/(double)cmax), (GLfloat)((*j)->y/(double)cmax)});
+				color_data.insert(color_data.end(), *k); ++k;
+				color_data.insert(color_data.end(), *k); ++k;
+				color_data.insert(color_data.end(), *k); ++k;
+				color_data.insert(color_data.end(), *k); ++k;
+			}
+			c_i += 6*2;
+			color_index += (*i)->size;
+		}
+		// color info
+		f->glBindBuffer(GL_ARRAY_BUFFER, vbos[2]);
+		f->glBufferData(GL_ARRAY_BUFFER, sizeof(c), c, GL_STATIC_DRAW);
+		// color SSBO
+		f->glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbos[1]);
+		f->glBufferData(GL_SHADER_STORAGE_BUFFER, color_data.size()*sizeof(GLfloat), color_data.data(), GL_STATIC_DRAW);
+		color_update = false;
+	}
+	// coordinates and bezier info
 	f->glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
 	f->glEnableVertexAttribArray(0);
 	f->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
 	f->glBindBuffer(GL_ARRAY_BUFFER, vbos[1]);
 	f->glEnableVertexAttribArray(1);
 	f->glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+	// bezier SSBO
+	f->glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbos[0]);
+	QOpenGLContext::currentContext()->extraFunctions()->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbos[0]);
+	// color info
 	f->glBindBuffer(GL_ARRAY_BUFFER, vbos[2]);
 	f->glEnableVertexAttribArray(2);
-	f->glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, NULL);
-	glDrawArrays(GL_TRIANGLES, 0, 6*length);
+	f->glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+	// color SSBO
+	f->glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbos[1]);
+	QOpenGLContext::currentContext()->extraFunctions()->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbos[1]);
+	glDrawArrays(GL_TRIANGLES, 0, 6*index);
 }
 
 void OpenGLShapeCollection::pack(OpenGLShapeCollection* other) {

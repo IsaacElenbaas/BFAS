@@ -21,7 +21,7 @@ bool set_pixel(const point& p, int r, int g, int b, int a) {
 		r*w+last.red()  *(1-w),
 		g*w+last.green()*(1-w),
 		b*w+last.blue() *(1-w),
-		(a+last.alpha()-255 < 255) ? a+last.alpha()-255 : 255
+		(a+last.alpha() < 255) ? a+last.alpha() : 255
 	));
 	return true;
 }

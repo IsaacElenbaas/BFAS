@@ -19,8 +19,12 @@ public:
 	size_t size;
 	point tl, br;
 	size_t depth;
-	friend class OpenGLShapeCollection;
 	std::forward_list<std::tuple<decltype(point().used_by.begin()), bool, decltype(point().used_by.end())>> shape;
+	std::forward_list<point*> color_coords;
+	std::forward_list<double> colors;
+	size_t color_count;
+	bool color_update;
+	friend class OpenGLShapeCollection;
 	static void add(typeof(Shape::shape) shape);
 	void release();
 };
@@ -28,6 +32,7 @@ public:
 class OpenGLShapeCollection {
 	std::forward_list<Shape*> shapes;
 	unsigned long vbos[3];
+	unsigned long ssbos[2];
 	void* data;
 	size_t used = 0;
 	size_t capacity = SHAPE_COLLECTION_BEZIERS;

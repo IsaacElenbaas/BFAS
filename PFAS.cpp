@@ -11,6 +11,7 @@
 #include "util.h"
 // TODO: remove
 #include <iostream>
+#include <random>
 
 // TODO: everything else should include UI.h
 #include "UI/UI.cpp"
@@ -69,152 +70,20 @@ void paint_bezier(bezier b, bool highlight) {
 /*}}}*/
 
 void paint() {
-	{
-		// TODO: not sure if this should be the whole thing for shape detection or not - make it a setting?
-		QuadTree<bezier>::Region region = bezier_QT.region(state.tl, state.br);
-		std::unordered_map<bezier*, bool> used;
-		std::unordered_map<point*, bool> shape_points;
-		std::forward_list<std::tuple<decltype(point().used_by.begin()), bool, decltype(point().used_by.end())>> shape;
-		// DFS for loops (shapes) from each bezier
-		// doesn't search from a bezier if it was used in a shape previously
-		for(bezier* b = region.next(false); b != NULL; b = region.next(false)) {
-			if(used.find(b) != used.end()) continue;
-			shape_points[b->a1] = true;
-			auto start = b->a2->used_by.begin();
-			while(*start != b) { ++start; }
-			shape.push_front({start, false, (decltype(point().used_by.begin()))NULL});
-			bool backtracked = false;
-			// single beziers may be a loop
-			bezier* last_b;
-			bool last_left;
-			point* endpoint;
-			decltype(point().used_by.begin()) next_b;
-			goto checkshape;
-			while(true) {
-				last_b = *std::get<0>(shape.front());
-				last_left = std::get<1>(shape.front());
-				endpoint = (*last_b).endpoint(last_left);
-				next_b = endpoint->used_by.begin();
-				// handles have used_by too, don't want to follow them
-				while(
-					next_b != endpoint->used_by.end() &&
-					endpoint != (*next_b)->a1 && endpoint != (*next_b)->a2
-				) { ++next_b; }
-				// go deeper if not in the process of backtracking a step and there is somewhere to go
-				if(!backtracked && next_b != endpoint->used_by.end()) {
-					bool next_left = !(endpoint == (*next_b)->a1);
-					auto next_end = endpoint->used_by.end();
-					shape_points[endpoint] = true;
-					shape.push_front({next_b, next_left, next_end});
-					// if this branch is already bad (next point already in use), go sideways
-					point* next_endpoint = (**next_b).endpoint(next_left);
-					if(
-						shape_points.find(next_endpoint) != shape_points.end() &&
-						// need to check solutions for whether they are a solution lol
-						(next_endpoint != b->a1 || *next_b == b)
-					) {
-						backtracked = true;
-						continue;
-					}
+	// fill shape with set_pixel
+	/*for(auto shape_shape = shapes.begin(); shape_shape != shapes.end(); ++shape_shape) {
+		auto shape = (*shape_shape).first;
+		for(int y = 0; y < h; y++) {
+			for(int x = 0; x < w; x++) {
+				int crosses = 0;
+				for(auto i = shape->begin(); i != shape->end(); ++i) {
+					crosses += bezier_crosses(s2a({x, y}), **std::get<0>(*i));
 				}
-				else {
-					if(++shape.begin() != shape.end())
-						endpoint = (**std::get<0>(*(++shape.begin()))).endpoint(std::get<1>(*(++shape.begin())));
-					auto alt_b = ++std::get<0>(shape.front());
-					// handles have used_by too, don't want to follow them
-					while(
-						alt_b != std::get<2>(shape.front()) &&
-						endpoint != (*alt_b)->a1 && endpoint != (*alt_b)->a2
-					) { ++alt_b; }
-					if(
-						alt_b != std::get<2>(shape.front()) &&
-						// prevent going sideways from start
-						++shape.begin() != shape.end()
-					) {
-						bool alt_left = !((*last_b).endpoint(!last_left) == (*alt_b)->a1);
-						// have to store this before pop
-						auto alt_end = std::get<2>(shape.front());
-						shape.pop_front();
-						shape.push_front({alt_b, alt_left, alt_end});
-						// run through this conditional again to go sideways or backwards if just added bezier is invalid
-						point* alt_endpoint = (**alt_b).endpoint(alt_left);
-						if(
-							shape_points.find(alt_endpoint) != shape_points.end() &&
-							// need to check solutions for whether they are a solution lol
-							(alt_endpoint != b->a1 || *alt_b == b)
-						) {
-							backtracked = true;
-							continue;
-						}
-						backtracked = false;
-					}
-					else {
-						// go backwards
-						shape_points.erase((*last_b).endpoint(!last_left));
-						shape.pop_front();
-						if(shape.empty()) break;
-						backtracked = true;
-						continue;
-					}
-				}
-checkshape: // note last_b and last_left aren't initialized here
-				// check for closed shape
-				if((**std::get<0>(shape.front())).endpoint(std::get<1>(shape.front())) == b->a1) {
-					for(auto i = shape.begin(); i != shape.end(); ++i) {
-						used[*std::get<0>(*i)] = true;
-					}
-					// put upper-leftmost bezier first before storing, try to account for different first shape discovery points
-					typeof(shape) normalized_shape = shape;
-					bezier* min = *std::get<0>(normalized_shape.front());
-					auto before_min = normalized_shape.before_begin();
-					for(auto i = ++normalized_shape.begin(), before_i = normalized_shape.begin(); i != normalized_shape.end(); before_i = i++) {
-						if(
-							(*std::get<0>(*i))->a1->x < min->a1->x ||
-							(
-								(*std::get<0>(*i))->a1->x <= min->a1->x &&
-								(*std::get<0>(*i))->a1->y <  min->a1->y
-							)
-						) {
-							min = *std::get<0>(*i);
-							before_min = before_i;
-						}
-					}
-					if(before_min != normalized_shape.before_begin())
-						normalized_shape.splice_after(normalized_shape.before_begin(), normalized_shape, before_min, normalized_shape.end());
-					auto shape_place = shapes.find(&normalized_shape);
-					if(shape_place != shapes.end())
-						(*shape_place).second->stale = false;
-					else
-						Shape::add(normalized_shape);
-					// fill shape with set_pixel
-					/*for(int y = 0; y < h; y++) {
-						int zero_crosses = 0;
-						for(auto i = shape.begin(); i != shape.end(); ++i) {
-							zero_crosses += bezier_crosses(s2a({0, y}), **std::get<0>(*i));
-						}
-						if(zero_crosses == 0) continue;
-						for(int x = 0; x < w; x++) {
-							int crosses = 0;
-							int a_crosses = 0;
-							for(auto i = shape.begin(); i != shape.end(); ++i) {
-								point p = s2a({x, y});
-								bezier b = **std::get<0>(*i);
-								crosses += bezier_crosses(p, b);
-								if(
-									(p.y == b.a1->y && p.x < b.a1->x) ||
-									(p.y == b.a2->y && p.x < b.a2->x)
-								) a_crosses++;
-							}
-							// zero_crosses check prevents M shapes from breaking things
-							if((crosses+((zero_crosses & 1) ? a_crosses/2 : 0)) & 1)
-								set_pixel({x, y}, 0, 255, 0, 64);
-						}
-					}//*/
-				}
+				if(crosses & 1)
+					set_pixel({x, y}, 0, 255, 0, 64);
 			}
-			shape_points.erase(b->a1);
 		}
-	}
+	}//*/
 	{
 		QuadTree<bezier>::Region region = bezier_QT.region(state.tl, state.br);
 		for(bezier* b = region.next(false); b != NULL; b = region.next(false)) {
@@ -230,6 +99,7 @@ checkshape: // note last_b and last_left aren't initialized here
 			paint_bezier(*b, false);
 		}
 	}
+
 	// end of output, start of UI
 	paint_flush();
 
@@ -245,6 +115,129 @@ checkshape: // note last_b and last_left aren't initialized here
 		for(point* p = region.next(false); p != NULL; p = region.next(false)) {
 			paint_handle(a2s(*p));
 		}
+	}
+}
+
+void detect_shapes() {
+	// TODO: not sure if this should be the whole canvas or just the screen for shape detection or not - make it a setting?
+	QuadTree<bezier>::Region region = bezier_QT.region(state.tl, state.br);
+	std::unordered_map<bezier*, bool> used;
+	std::unordered_map<point*, bool> shape_points;
+	std::forward_list<std::tuple<decltype(point().used_by.begin()), bool, decltype(point().used_by.end())>> shape;
+	// DFS for loops (shapes) from each bezier
+	// doesn't search from a bezier if it was used in a shape previously
+	for(bezier* b = region.next(false); b != NULL; b = region.next(false)) {
+		if(used.find(b) != used.end()) continue;
+		shape_points[b->a1] = true;
+		auto start = b->a2->used_by.begin();
+		while(*start != b) { ++start; }
+		shape.push_front({start, false, (decltype(point().used_by.begin()))NULL});
+		bool backtracked = false;
+		// single beziers may be a loop
+		bezier* last_b;
+		bool last_left;
+		point* endpoint;
+		decltype(point().used_by.begin()) next_b;
+		goto checkshape;
+		while(true) {
+			last_b = *std::get<0>(shape.front());
+			last_left = std::get<1>(shape.front());
+			endpoint = (*last_b).endpoint(last_left);
+			next_b = endpoint->used_by.begin();
+			// handles have used_by too, don't want to follow them
+			while(
+				next_b != endpoint->used_by.end() &&
+				endpoint != (*next_b)->a1 && endpoint != (*next_b)->a2
+			) { ++next_b; }
+			// go deeper if not in the process of backtracking a step and there is somewhere to go
+			if(!backtracked && next_b != endpoint->used_by.end()) {
+				bool next_left = !(endpoint == (*next_b)->a1);
+				auto next_end = endpoint->used_by.end();
+				shape_points[endpoint] = true;
+				shape.push_front({next_b, next_left, next_end});
+				// if this branch is already bad (next point already in use), go sideways
+				point* next_endpoint = (**next_b).endpoint(next_left);
+				if(
+					shape_points.find(next_endpoint) != shape_points.end() &&
+					// need to check solutions for whether they are a solution lol
+					(next_endpoint != b->a1 || *next_b == b)
+				) {
+					backtracked = true;
+					continue;
+				}
+			}
+			else {
+				if(++shape.begin() != shape.end())
+					endpoint = (**std::get<0>(*(++shape.begin()))).endpoint(std::get<1>(*(++shape.begin())));
+				auto alt_b = ++std::get<0>(shape.front());
+				// handles have used_by too, don't want to follow them
+				while(
+					alt_b != std::get<2>(shape.front()) &&
+					endpoint != (*alt_b)->a1 && endpoint != (*alt_b)->a2
+				) { ++alt_b; }
+				if(
+					alt_b != std::get<2>(shape.front()) &&
+					// prevent going sideways from start
+					++shape.begin() != shape.end()
+				) {
+					bool alt_left = !((*last_b).endpoint(!last_left) == (*alt_b)->a1);
+					// have to store this before pop
+					auto alt_end = std::get<2>(shape.front());
+					shape.pop_front();
+					shape.push_front({alt_b, alt_left, alt_end});
+					// run through this conditional again to go sideways or backwards if just added bezier is invalid
+					point* alt_endpoint = (**alt_b).endpoint(alt_left);
+					if(
+						shape_points.find(alt_endpoint) != shape_points.end() &&
+						// need to check solutions for whether they are a solution lol
+						(alt_endpoint != b->a1 || *alt_b == b)
+					) {
+						backtracked = true;
+						continue;
+					}
+					backtracked = false;
+				}
+				else {
+					// go backwards
+					shape_points.erase((*last_b).endpoint(!last_left));
+					shape.pop_front();
+					if(shape.empty()) break;
+					backtracked = true;
+					continue;
+				}
+			}
+checkshape: // note last_b and last_left aren't initialized here
+			// check for closed shape
+			if((**std::get<0>(shape.front())).endpoint(std::get<1>(shape.front())) == b->a1) {
+				for(auto i = shape.begin(); i != shape.end(); ++i) {
+					used[*std::get<0>(*i)] = true;
+				}
+				// put upper-leftmost bezier first before storing, try to account for different first shape discovery points
+				typeof(shape) normalized_shape = shape;
+				bezier* min = *std::get<0>(normalized_shape.front());
+				auto before_min = normalized_shape.before_begin();
+				for(auto i = ++normalized_shape.begin(), before_i = normalized_shape.begin(); i != normalized_shape.end(); before_i = i++) {
+					if(
+						(*std::get<0>(*i))->a1->x < min->a1->x ||
+						(
+							(*std::get<0>(*i))->a1->x <= min->a1->x &&
+							(*std::get<0>(*i))->a1->y <  min->a1->y
+						)
+					) {
+						min = *std::get<0>(*i);
+						before_min = before_i;
+					}
+				}
+				if(before_min != normalized_shape.before_begin())
+					normalized_shape.splice_after(normalized_shape.before_begin(), normalized_shape, before_min, normalized_shape.end());
+				auto shape_place = shapes.find(&normalized_shape);
+				if(shape_place != shapes.end())
+					(*shape_place).second->stale = false;
+				else
+					Shape::add(normalized_shape);
+			}
+		}
+		shape_points.erase(b->a1);
 	}
 }
 
@@ -300,6 +293,29 @@ void key_release(int key) {
 				state.action = Actions::PlacingBezier;
 			}
 			repaint();
+			break;
+		case 'C':
+			for(auto shape_shape = shapes.begin(); shape_shape != shapes.end(); ++shape_shape) {
+				auto shape = (*shape_shape).first;
+				int crosses = 0;
+				for(auto i = shape->begin(); i != shape->end(); ++i) {
+					crosses += bezier_crosses(s2a(mouse), **std::get<0>(*i));
+				}
+				if(crosses & 1) {
+					Shape* shape = (*shape_shape).second;
+					point* p = point_RS.get();
+					*p = s2a(mouse);
+					shape->color_coords.push_front(p);
+					shape->colors.push_front(0);
+					shape->colors.push_front((rand()%256)/255.0);
+					shape->colors.push_front((rand()%256)/255.0);
+					shape->colors.push_front((rand()%256)/255.0);
+					shape->color_count++;
+					shape->color_update = true;
+					repaint();
+					break;
+				}
+			}
 			break;
 		//case 16777216:
 		//	a->quit();

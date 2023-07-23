@@ -8,11 +8,13 @@ UTILS=$(patsubst %.cpp, %.o, $(wildcard ./util/*.cpp))
 .PHONY: all
 all: PFAS
 
-PFAS: UI/main.h UI/Makefile UI/main.cpp shape.vert shape.frag util/shapes.h UI/PFAS.o $(UTILS)
+PFAS: UI/main.h UI/Makefile UI/main.cpp shape.vert shape.frag $(wildcard ./*.glsl) util/shapes.h UI/PFAS.o $(UTILS)
 	$(MAKE) -C UI
 	mv UI/UI PFAS
 UI/PFAS.o: PFAS.cpp $(wildcard ./*.h) $(wildcard ./util/*.h) UI/UI.cpp
 	$(CC) $(CFLAGS) $(INC_PATH) -c -o $@ $< $(LIB_PATH) -I/usr/include/qt{,/QtGui,/QtWidgets} $(LIBS)
+util/resource.o: util/resource.cpp util/resource.h types.h util/shapes.h
+	$(CC) $(CFLAGS) $(INC_PATH) -c -o $@ $< $(LIB_PATH) $(LIBS)
 util/shapes.o: util/shapes.cpp util/shapes.h types.h
 	$(CC) $(CFLAGS) $(INC_PATH) -c -o $@ $< $(LIB_PATH) -I/usr/include/qt{,/QtGui,/QtWidgets} $(LIBS)
 
