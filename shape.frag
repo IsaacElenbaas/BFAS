@@ -34,12 +34,6 @@ vec2 circumcenter(vec2 a, vec2 b) {
 void main() {
 	if(int(color_data[0]) == 0) discard;
 	position = real_position;
-	for(int i = 0; i < 3*int(color_data[0]); i += 3) {
-		if(length(position-colors[i]) < 0.001/u_zoom) {
-			fragColor = vec4(colors[i+1], colors[i+2][0], 1);
-			return;
-		}
-	}
 	int crosses = 0;
 	for(int i = 0; i < int(bezier_data[0]); ++i) {
 		bezier_crosses_bez.a1 = beziers[int(bezier_data[1])+4*i+0];
@@ -52,6 +46,12 @@ void main() {
 	// TODO: . . . issue is we don't have one of the handles here
 	if((crosses & 1) != 1)
 		discard;
+	for(int i = 0; i < 3*int(color_data[0]); i += 3) {
+		if(length(position-colors[i]) < 0.001/u_zoom) {
+			fragColor = vec4(colors[i+1], colors[i+2][0], 1);
+			return;
+		}
+	}
 
 	// +1 to not have to modulo all the time in outside-hull checking
 	int c_s[MAX_COLORS+1];

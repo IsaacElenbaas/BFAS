@@ -19,6 +19,7 @@ public:
 	size_t size;
 	point tl, br;
 	size_t depth;
+	std::unordered_map<bezier*, bool> beziers;
 	std::forward_list<std::tuple<decltype(point().used_by.begin()), bool, decltype(point().used_by.end())>> shape;
 	std::forward_list<point*> color_coords;
 	std::forward_list<double> colors;

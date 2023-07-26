@@ -48,6 +48,7 @@ void Shape::add(typeof(Shape::shape) shape) {
 		bezier* temp = b->clone();
 		last_data = new_shape->shape_data.insert_after(last_data, temp);
 		last = new_shape->shape.insert_after(last, {last_data, std::get<1>(*i), std::tuple_element<2, typeof(*i)>::type()});
+		new_shape->beziers.insert({b, true});
 	}
 	new_shape->depth = 0;
 	shapes.insert({&new_shape->shape, new_shape});
@@ -78,6 +79,7 @@ void Shape::release() {
 	shapes.erase(&shape);
 	for(auto i = shape_data.begin(); i != shape_data.end(); ++i ) { (*i)->release(); }
 	shape_data.clear();
+	beziers.clear();
 	shape.clear();
 	color_coords.clear();
 	colors.clear();

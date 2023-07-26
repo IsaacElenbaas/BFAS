@@ -1,5 +1,6 @@
 #ifndef STATE_H
 #include "types.h"
+#include "util/shapes.h"
 #define STATE_H
 
 enum class Actions {
@@ -19,6 +20,7 @@ struct State {
 	point p_last;
 	point** p_prefer;
 	bezier* b;
+	Shape* s = NULL;
 };
 extern State state;
 #endif

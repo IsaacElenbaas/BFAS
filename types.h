@@ -18,6 +18,7 @@ struct point {
 	int x, y;
 	int use_count = 0;
 	std::forward_list<bezier*> used_by;
+	bool visible = false;
 	void add_to(bezier* b) { use_count++; used_by.remove(b); used_by.push_front(b); }
 	void remove_from(bezier* b);
 	bool in(const point& tl, const point& br) const {
@@ -91,6 +92,7 @@ inline bool line_rect_intersect(const point& a, const point& b, const point& tl,
 extern point t_a1, t_h1, t_a2, t_h2;
 struct bezier {
 	point *a1, *h1, *a2, *h2;
+	bool used = false;
 	point* endpoint(bool left) { return (!left) ? a2 : a1; }
 	bezier split(double t, bool left) const {
 		if(left) {
