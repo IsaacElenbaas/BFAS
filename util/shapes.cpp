@@ -1,67 +1,153 @@
 #include <QOpenGLExtraFunctions>
 #include <QOpenGLFunctions>
+#include <algorithm>
 #include <iterator>
 #include <limits>
+#include "UI.h"
+#include "quadtree.h"
 #include "resource.h"
 #include "shapes.h"
+#include "state.h"
 // TODO: remove
 #include <iostream>
 
-/* TODO
-Multiple OpenGL object groups of shapes
-	Each shape is represented by a class
-	Mark all shapes as non-present then when finding shapes hash by points, mark as present again or create new shape (if actually new shape or was modified, can store tl and br)
-	Remove non-present shapes, every once in a while pack down
-		Only pack if not changed in 10 changes or something - mark as new when made, only pack those not marked as new, mark all as old when packing
-Three shape VBOs
-	First gives:
-		position x y depth
-	Second gives:
-		number of beziers in the shape
-		index in the uniform SSBO of the first bezier in the shape
-	Third gives:
-		number of color points in the shape
-		index in the second uniform VBO of the first color in the shape
-One uniform SSBO for beziers
-One uniform SSBO for colors
-*/
+extern QuadTree<point> point_QT;
+extern QuadTree<bezier> bezier_QT;
+
 std::unordered_map<typeof(Shape::shape)*, Shape*, ShapeHasher, ShapeComparator> shapes;
+static std::forward_list<typeof(Shape::shape)> add_shapes;
 std::forward_list<OpenGLShapeCollection*> shape_collections;
 Resource<Shape> shape_RS;
 
-void Shape::add(typeof(Shape::shape) shape) {
-	Shape* new_shape = shape_RS.get();
-	new_shape->update = true;
-	new_shape->stale = false;
+void Shape::add(typeof(Shape::shape) shape) { add_shapes.push_front(shape); }
+void Shape::apply_adds() {
+	// try to match up shapes with their old objects to preserve colors and active shape between quick disconnections
+	size_t to_match = distance(add_shapes.begin(), add_shapes.end());
+	for(auto i = shapes.begin(); i != shapes.end(); ++i) { if((*i).second->stale) to_match++; }
+	if(to_match != 0) {
+		Shape* new_state_s = NULL;
+		Shape** adding_shapes = new Shape*[to_match];
+		size_t i = 0;
+		for(auto j = shapes.begin(); j != shapes.end(); ++j) {
+			if((*j).second->stale) {
+				adding_shapes[i] = (*j).second;
+				i++;
+			}
+		}
+		for( ; i < to_match; i++) {
+			adding_shapes[i] = shape_RS.get();
+			// no point in matching against fresh shapes
+			if(adding_shapes[i]->beziers.empty()) {
+				shape_RS.release(adding_shapes[i]);
+				i--; to_match--;
+			}
+		}
+		// checking in this order should be most recently released first
+		for(size_t i = 0; i < to_match; i++) {
+			auto before_best = add_shapes.before_begin();
+			size_t best_count = 0;
+			for(auto shape = add_shapes.begin(), last = before_best; shape != add_shapes.end(); last = shape++) {
+				size_t count = 0;
+				for(auto j = (*shape).begin(); j != (*shape).end(); ++j) {
+					if(adding_shapes[i]->beziers.find(*std::get<0>(*j)) != adding_shapes[i]->beziers.end())
+						count++;
+				}
+				if(count > best_count) {
+					before_best = last;
+					best_count = count;
+				}
+			}
+			if(best_count == 0) {
+				if(adding_shapes[i]->shape.empty())
+					shape_RS.release(adding_shapes[i]);
+				// collection needs to see it is stale and remove it
+				else {
+					shapes.erase(&adding_shapes[i]->shape);
+					for(auto k = adding_shapes[i]->shape_data.begin(); k != adding_shapes[i]->shape_data.end(); ++k ) { (*k)->release(); }
+					adding_shapes[i]->shape_data.clear();
+					adding_shapes[i]->shape.clear();
+				}
+			}
+			else {
+				shapes.erase(&adding_shapes[i]->shape);
+				for(auto k = adding_shapes[i]->shape_data.begin(); k != adding_shapes[i]->shape_data.end(); ++k ) { (*k)->release(); }
+				adding_shapes[i]->shape_data.clear();
+				adding_shapes[i]->shape.clear();
+				adding_shapes[i]->_add(*(std::next(before_best)));
+				// first collection (new one) will see stale == false, second (old one) will see stale == true and remove it
+				adding_shapes[i]->stale = false;
+				add_shapes.erase_after(before_best);
+				if(new_state_s == NULL || state.s == adding_shapes[i])
+					new_state_s = adding_shapes[i];
+			}
+		}
+		if(distance(add_shapes.begin(), add_shapes.end()) > 0 && (state.s == NULL || state.s->stale)) {
+			// may be filled below, not here
+			state.s = new_state_s;
+			repaint(false);
+		}
+		// add shapes that didn't match with an old shape
+		for(auto shape = add_shapes.begin(); shape != add_shapes.end(); ++shape) {
+			Shape* new_shape = shape_RS.get();
+			new_shape->color_coords.clear();
+			new_shape->colors.clear();
+			new_shape->color_count = 0;
+			new_shape->_add(*shape);
+			// first collection (new one) will see stale == false, second (old one) will see stale == true and remove it
+			new_shape->stale = false;
+			if(state.s == NULL)
+				state.s = new_shape;
+		}
+		add_shapes.clear();
+	}
+	{
+		QuadTree<point>::Region region = point_QT.region(state.tl, state.br);
+		for(point* p = region.next(false); p != NULL; p = region.next(false)) {
+			p->visible = false;
+		}
+	}
+	{
+		QuadTree<bezier>::Region region = bezier_QT.region(state.tl, state.br);
+		for(bezier* b = region.next(false); b != NULL; b = region.next(false)) {
+			if(!b->used || (state.s != NULL && state.s->beziers.find(b) != state.s->beziers.end())) {
+				b->a1->visible = true; b->h1->visible = true;
+				b->a2->visible = true; b->h2->visible = true;
+			}
+		}
+	}
+}
+void Shape::_add(typeof(Shape::shape) shape) {
+	beziers.clear();
+	update = true;
 	// need to copy data because moving a point would change the hash of the old shape and we can't find it anymore
 	// or, worse, the hash *doesn't* change and because the data is equal (pointers to same things) the old entry is overwritten but its being stale not handled
-	auto last_data = new_shape->shape_data.before_begin();
-	auto last = new_shape->shape.before_begin();
-	new_shape->tl = {cmax, cmax};
-	new_shape->br = {0, 0};
-	for(auto i = shape.begin(); i != shape.end(); ++i ) {
-		bezier* b = (*std::get<0>(*i));
-		new_shape->tl.x = std::min({new_shape->tl.x, b->a1->x, b->h1->x, b->a2->x, b->h2->x});
-		new_shape->tl.y = std::min({new_shape->tl.y, b->a1->y, b->h1->y, b->a2->y, b->h2->y});
-		new_shape->br.x = std::max({new_shape->br.x, b->a1->x, b->h1->x, b->a2->x, b->h2->x});
-		new_shape->br.y = std::max({new_shape->br.y, b->a1->y, b->h1->y, b->a2->y, b->h2->y});
+	auto last_data = shape_data.before_begin();
+	auto last = this->shape.before_begin();
+	tl = {cmax, cmax};
+	br = {0, 0};
+	for(auto i = shape.begin(); i != shape.end(); ++i) {
+		bezier* b = *std::get<0>(*i);
+		tl.x = std::min({tl.x, b->a1->x, b->h1->x, b->a2->x, b->h2->x});
+		tl.y = std::min({tl.y, b->a1->y, b->h1->y, b->a2->y, b->h2->y});
+		br.x = std::max({br.x, b->a1->x, b->h1->x, b->a2->x, b->h2->x});
+		br.y = std::max({br.y, b->a1->y, b->h1->y, b->a2->y, b->h2->y});
 		bezier* temp = b->clone();
-		last_data = new_shape->shape_data.insert_after(last_data, temp);
-		last = new_shape->shape.insert_after(last, {last_data, std::get<1>(*i), std::tuple_element<2, typeof(*i)>::type()});
-		new_shape->beziers.insert({b, true});
+		last_data = shape_data.insert_after(last_data, temp);
+		last = this->shape.insert_after(last, {last_data, std::get<1>(*i), std::tuple_element<2, typeof(*i)>::type()});
+		beziers.insert({b, true});
 	}
-	new_shape->depth = 0;
-	shapes.insert({&new_shape->shape, new_shape});
+	depth = 0;
+	shapes.insert({&this->shape, this});
 	OpenGLShapeCollection* collection = shape_collections.front();
-	new_shape->size = distance(shape.begin(), shape.end());
-	if(new_shape->size > collection->capacity-collection->used) {
+	size = distance(shape.begin(), shape.end());
+	if(size > collection->capacity-collection->used) {
 		if(collection->used != 0) {
 			shape_collections.push_front(new OpenGLShapeCollection());
 			collection = shape_collections.front();
 		}
-		if(new_shape->size > collection->capacity-collection->used) {
+		if(size > collection->capacity-collection->used) {
 			delete[] static_cast<GLfloat*>(collection->data);
-			collection->capacity = new_shape->size;
+			collection->capacity = size;
 			collection->data = new GLfloat[6*(3+2)*collection->capacity];
 			QOpenGLFunctions* f = QOpenGLContext::currentContext()->functions();
 			f->glBindBuffer(GL_ARRAY_BUFFER, collection->vbos[0]);
@@ -70,20 +156,8 @@ void Shape::add(typeof(Shape::shape) shape) {
 			f->glBufferData(GL_ARRAY_BUFFER, collection->capacity*6*2*sizeof(GLfloat), NULL, GL_DYNAMIC_DRAW);
 		}
 	}
-	new_shape->color_count = 0;
-	collection->shapes.push_front(new_shape);
-	collection->used += new_shape->size;
-}
-
-void Shape::release() {
-	shapes.erase(&shape);
-	for(auto i = shape_data.begin(); i != shape_data.end(); ++i ) { (*i)->release(); }
-	shape_data.clear();
-	beziers.clear();
-	shape.clear();
-	color_coords.clear();
-	colors.clear();
-	shape_RS.release(this);
+	collection->shapes.push_front(this);
+	collection->used += size;
 }
 
 OpenGLShapeCollection::OpenGLShapeCollection() {
@@ -116,7 +190,7 @@ void OpenGLShapeCollection::draw() {
 			// TODO: not cleaning these up - should probably happen in pack though
 			// TODO: leave one empty one
 			used -= (*i)->size;
-			(*i)->release();
+			if((*i)->shape.empty()) shape_RS.release(*i);
 			update = true;
 			update_index = std::min(index, update_index);
 			i = shapes.erase_after(last);
@@ -133,8 +207,7 @@ void OpenGLShapeCollection::draw() {
 			}
 			(*i)->stale = true;
 			index++;
-			last = i;
-			++i;
+			last = i++;
 		}
 	}
 	QOpenGLFunctions* f = QOpenGLContext::currentContext()->functions();
@@ -162,8 +235,8 @@ void OpenGLShapeCollection::draw() {
 			p_i += 6*3;
 			b_i += 6*2;
 			bezier_index += (*i)->size;
-			for(auto j = (*i)->shape.begin(); j != (*i)->shape.end(); ++j ) {
-				bezier* b = (*std::get<0>(*j));
+			for(auto j = (*i)->shape.begin(); j != (*i)->shape.end(); ++j) {
+				bezier* b = *std::get<0>(*j);
 				bezier_data.insert(bezier_data.end(), {
 					(GLfloat)(b->a1->x/(double)cmax), (GLfloat)(b->a1->y/(double)cmax),
 					(GLfloat)(b->h1->x/(double)cmax), (GLfloat)(b->h1->y/(double)cmax),

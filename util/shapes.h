@@ -12,21 +12,26 @@
 
 // TODO: PFAS.cpp checks the map, unstales or calls add
 class Shape {
+public:
+	std::forward_list<std::tuple<decltype(point().used_by.begin()), bool, decltype(point().used_by.end())>> shape;
+private:
 	std::forward_list<bezier*> shape_data;
 	bool update;
+	void _add(typeof(Shape::shape) shape);
 public:
 	bool stale;
+	bool fresh;
 	size_t size;
 	point tl, br;
 	size_t depth;
 	std::unordered_map<bezier*, bool> beziers;
-	std::forward_list<std::tuple<decltype(point().used_by.begin()), bool, decltype(point().used_by.end())>> shape;
 	std::forward_list<point*> color_coords;
 	std::forward_list<double> colors;
 	size_t color_count;
 	bool color_update;
 	friend class OpenGLShapeCollection;
 	static void add(typeof(Shape::shape) shape);
+	static void apply_adds();
 	void release();
 };
 
@@ -39,7 +44,7 @@ class OpenGLShapeCollection {
 	size_t capacity = SHAPE_COLLECTION_BEZIERS;
 	bool update = false;
 public:
-	friend void Shape::add(typeof(shape) shape);
+	friend void Shape::_add(typeof(shape) shape);
 	OpenGLShapeCollection();
 	~OpenGLShapeCollection();
 	void draw();

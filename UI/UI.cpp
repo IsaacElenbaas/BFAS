@@ -8,6 +8,7 @@ QOpenGLShaderProgram* program;
 GLuint u_depth;
 QPainter* painter;
 QImage* pixels;
+bool repaint_later = false;
 
 // TODO: rethink - inline elsewhere, store in matrix, copy over to this in paint_flush? Just deal with importing qt stuff and inline this?
 bool set_pixel(const point& p, int r, int g, int b, int a) {
@@ -45,4 +46,4 @@ void paint_flush() {
 	pixels->fill(qRgba(0, 0, 0, 0));
 }
 
-void repaint() { canvas->repaint(); }
+void repaint(bool now) { if(now) canvas->repaint(); else repaint_later = true; }

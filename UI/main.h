@@ -9,6 +9,7 @@
 extern QOpenGLShaderProgram* program;
 extern QPainter* painter;
 extern QImage* pixels;
+extern bool repaint_later;
 
 class Canvas : public QOpenGLWidget {
 	Q_OBJECT

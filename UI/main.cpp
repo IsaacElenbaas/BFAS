@@ -49,6 +49,7 @@ void Canvas::paintGL() {
 	program->setUniformValue(u_zoom, (GLfloat)state.zoom);
 	program->setUniformValue(u_tl, (GLfloat)(state.tl.x/(double)cmax), (GLfloat)(state.tl.y/(double)cmax));
 	detect_shapes();
+	Shape::apply_adds();
 	for(auto i = shape_collections.begin(); i != shape_collections.end(); ++i) { (*i)->draw(); }
 	// unbind vertex buffer, required for painter to still work
 	// do in initialize, maybe here too
@@ -62,6 +63,10 @@ void Canvas::paintGL() {
 	painter->begin(this);
 	paint();
 	painter->end();
+	if(repaint_later) {
+		repaint_later = false;
+		canvas->repaint();
+	}
 }
 
 void Canvas::wheelEvent(QWheelEvent* event) { zoom(2*event->angleDelta().y()/8.0/360); }

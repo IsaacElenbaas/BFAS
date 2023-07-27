@@ -1,5 +1,5 @@
 CC=g++
-INC_PATH=-I. -Iutil
+INC_PATH=-I. -Iutil -IUI
 LIB_PATH=#-L/home/dev_tools/apr/lib
 LIBS=-lm
 CFLAGS=-g -Wall -Wextra -O3
@@ -15,8 +15,10 @@ UI/PFAS.o: PFAS.cpp $(wildcard ./*.h) $(wildcard ./util/*.h) UI/UI.cpp
 	$(CC) $(CFLAGS) $(INC_PATH) -c -o $@ $< $(LIB_PATH) -I/usr/include/qt{,/QtGui,/QtWidgets} $(LIBS)
 util/resource.o: util/resource.cpp util/resource.h types.h util/shapes.h
 	$(CC) $(CFLAGS) $(INC_PATH) -c -o $@ $< $(LIB_PATH) $(LIBS)
-util/shapes.o: util/shapes.cpp util/shapes.h types.h
+util/shapes.o: util/shapes.cpp util/shapes.h types.h UI/UI.h util/quadtree.h util/resource.h
 	$(CC) $(CFLAGS) $(INC_PATH) -c -o $@ $< $(LIB_PATH) -I/usr/include/qt{,/QtGui,/QtWidgets} $(LIBS)
+util/util.o: util/util.cpp util/util.h types.h PFAS.h
+	$(CC) $(CFLAGS) $(INC_PATH) -c -o $@ $< $(LIB_PATH) $(LIBS)
 
 %.o: %.cpp %.h types.h
 	$(CC) $(CFLAGS) $(INC_PATH) -c -o $@ $< $(LIB_PATH) $(LIBS)
