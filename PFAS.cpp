@@ -117,6 +117,11 @@ void paint() {
 		for(point* p = region.next(false); p != NULL; p = region.next(false)) {
 			if(p->visible) paint_handle(a2s(*p));
 		}
+		if(state.s != NULL) {
+			for(auto p = state.s->color_coords.begin(); p != state.s->color_coords.end(); ++p) {
+				paint_handle(a2s(**p));
+			}
+		}
 	}
 }
 
@@ -140,34 +145,34 @@ void detect_shapes() {
 		// single beziers may be a loop
 		bezier* last_b;
 		bool last_left;
-		point* endpoint;
+		point* anchor;
 		decltype(point().used_by.begin()) next_b;
 		goto checkshape;
 		while(true) {
 			last_b = *std::get<0>(shape.front());
 			last_left = std::get<1>(shape.front());
-			endpoint = (*last_b).endpoint(last_left);
-			next_b = endpoint->used_by.begin();
+			anchor = (*last_b).anchor(last_left);
+			next_b = anchor->used_by.begin();
 			while(
-				next_b != endpoint->used_by.end() &&
+				next_b != anchor->used_by.end() &&
 				(
 					*next_b == last_b ||
 					// handles have used_by too, don't want to follow them
-					(endpoint != (*next_b)->a1 && endpoint != (*next_b)->a2)
+					(anchor != (*next_b)->a1 && anchor != (*next_b)->a2)
 				)
 			) { ++next_b; }
 			// go deeper if not in the process of backtracking a step and there is somewhere to go
-			if(!backtracked && next_b != endpoint->used_by.end() && *next_b != b) {
-				bool next_left = !(endpoint == (*next_b)->a1);
-				auto next_end = endpoint->used_by.end();
-				shape_points[endpoint] = true;
+			if(!backtracked && next_b != anchor->used_by.end() && *next_b != b) {
+				bool next_left = !(anchor == (*next_b)->a1);
+				auto next_end = anchor->used_by.end();
+				shape_points[anchor] = true;
 				shape.push_front({next_b, next_left, next_end});
 				// if this branch is already bad (next point already in use), go sideways
-				point* next_endpoint = (**next_b).endpoint(next_left);
+				point* next_anchor = (**next_b).anchor(next_left);
 				if(
-					shape_points.find(next_endpoint) != shape_points.end() &&
+					shape_points.find(next_anchor) != shape_points.end() &&
 					// need to check solutions for whether they are a solution lol
-					(next_endpoint != b->a1 || *next_b == b)
+					(next_anchor != b->a1 || *next_b == b)
 				) {
 					backtracked = true;
 					continue;
@@ -175,7 +180,7 @@ void detect_shapes() {
 			}
 			else {
 				if(++shape.begin() != shape.end())
-					endpoint = (**std::get<0>(*(++shape.begin()))).endpoint(std::get<1>(*(++shape.begin())));
+					anchor = (**std::get<0>(*(++shape.begin()))).anchor(std::get<1>(*(++shape.begin())));
 				auto alt_b = ++std::get<0>(shape.front());
 				while(
 					alt_b != std::get<2>(shape.front()) &&
@@ -183,7 +188,7 @@ void detect_shapes() {
 						// don't go backwards along same bezier
 						*alt_b == last_b ||
 						// handles have used_by too, don't want to follow them
-						(endpoint != (*alt_b)->a1 && endpoint != (*alt_b)->a2)
+						(anchor != (*alt_b)->a1 && anchor != (*alt_b)->a2)
 					)
 				) { ++alt_b; }
 				if(
@@ -191,17 +196,17 @@ void detect_shapes() {
 					// prevent going sideways from start
 					++shape.begin() != shape.end()
 				) {
-					bool alt_left = !((*last_b).endpoint(!last_left) == (*alt_b)->a1);
+					bool alt_left = !((*last_b).anchor(!last_left) == (*alt_b)->a1);
 					// have to store this before pop
 					auto alt_end = std::get<2>(shape.front());
 					shape.pop_front();
 					shape.push_front({alt_b, alt_left, alt_end});
 					// run through this conditional again to go sideways or backwards if just added bezier is invalid
-					point* alt_endpoint = (**alt_b).endpoint(alt_left);
+					point* alt_anchor = (**alt_b).anchor(alt_left);
 					if(
-						shape_points.find(alt_endpoint) != shape_points.end() &&
+						shape_points.find(alt_anchor) != shape_points.end() &&
 						// need to check solutions for whether they are a solution lol
-						(alt_endpoint != b->a1 || *alt_b == b)
+						(alt_anchor != b->a1 || *alt_b == b)
 					) {
 						backtracked = true;
 						continue;
@@ -210,7 +215,7 @@ void detect_shapes() {
 				}
 				else {
 					// go backwards
-					shape_points.erase((*last_b).endpoint(!last_left));
+					shape_points.erase((*last_b).anchor(!last_left));
 					shape.pop_front();
 					if(shape.empty()) break;
 					backtracked = true;
@@ -219,7 +224,7 @@ void detect_shapes() {
 			}
 	checkshape: // note last_b and last_left aren't initialized here
 			// check for closed shape
-			if((**std::get<0>(shape.front())).endpoint(std::get<1>(shape.front())) == b->a1) {
+			if((**std::get<0>(shape.front())).anchor(std::get<1>(shape.front())) == b->a1) {
 				for(auto i = shape.begin(); i != shape.end(); ++i) {
 					(*std::get<0>(*i))->used = true;
 					used.insert({*std::get<0>(*i), true});
@@ -306,6 +311,67 @@ void key_release(int key) {
 			state.action = Actions::PlacingBezier;
 			repaint(true);
 			break;
+		case 'G':
+			{
+				if(state.action != Actions::Idle) break;
+				point* remove_p = NULL;
+				QuadTree<point>::Region region = point_QT.region(
+					s2a({mouse.x-8, mouse.y-8})-point(1, 1),
+					s2a({mouse.x+8, mouse.y+8})+point(1, 1)
+				);
+				for(point* p = region.next(false); p != NULL; p = region.next(false)) {
+					point p2 = a2s(*p);
+					if(p->visible && pow(p2.x-mouse.x, 2)+pow(p2.y-mouse.y, 2) < pow(8, 2)+pow(8, 2)) {
+						remove_p = p;
+						break;
+					}
+				}
+				if(remove_p == NULL && state.s != NULL) {
+					auto p = state.s->color_coords.begin();
+					auto before_p = state.s->color_coords.before_begin();
+					auto before_color = state.s->colors.before_begin();
+					for( ; p != state.s->color_coords.end(); ++p, ++before_p, std::advance(before_color, 4)) {
+						point p2 = a2s(**p);
+						if(pow(p2.x-mouse.x, 2)+pow(p2.y-mouse.y, 2) < pow(8, 2)+pow(8, 2)) {
+							state.s->color_coords.erase_after(before_p);
+							for(int i = 0; i < 4; i++) { state.s->colors.erase_after(before_color); }
+							state.s->color_count--;
+							state.s->color_update = true;
+							repaint(true);
+							break;
+						}
+					}
+				}
+				if(remove_p == NULL) break;
+				size_t use_count = 0;
+				for(auto b = remove_p->used_by.begin(); b != remove_p->used_by.end(); ++b) {
+					if((*b)->a1 == remove_p || (*b)->a2 == remove_p) {
+						use_count++;
+						if(use_count > 2) break;
+					}
+				}
+				if(use_count > 2) break;
+				if(use_count == 1) {
+					bezier* b = remove_p->used_by.front();
+					bezier_QT.remove(b);
+					(*b).release();
+				}
+				else {
+					bezier* b = remove_p->used_by.front();
+					bezier* b2 = *(++remove_p->used_by.begin());
+					point** a2;
+					point** h2;
+					if(remove_p == b->a2) { a2 = &b->a2; h2 = &b->h2; } else { a2 = &b->a1; h2 = &b->h1; }
+					(**a2).remove_from(b); if((*a2)->use_count == 0) (**a2).release();
+					(**h2).remove_from(b); if((*h2)->use_count == 0) (**h2).release();
+					*a2 = (*b2).anchor(remove_p == b2->a2); (**a2).add_to(b);
+					*h2 = (*b2).handle(remove_p == b2->a2); (**h2).add_to(b);
+					bezier_QT.remove(b2);
+					(*b2).release();
+				}
+				repaint(true);
+			}
+			break;
 		case 'S':
 			{
 				Shape* last_s = state.s;
@@ -379,7 +445,7 @@ void key_release(int key) {
 			}
 			break;
 		//case 16777216:
-		//	a->quit();
+		//	(*a).quit();
 		//	break;
 	}
 	std::cout << key << std::endl;
@@ -467,7 +533,7 @@ void mouse_move(int x, int y) {
 						// TODO: colors
 						(*state.p).remove_from(b);
 						point_QT.remove(state.p);
-						state.p->release();
+						(*state.p).release();
 						(*(close[0].first)).add_to(b);
 						state.p = close[0].first;
 						state.p_last = *(state.p);
@@ -488,6 +554,7 @@ void mouse_move(int x, int y) {
 				// TODO: adjust paint_bezier or something to only repaint over where it used to be and where it is going
 				//       slow rendering is fine, but bad when having to do it so often while moving things
 				//       actually maybe fine now with paint_bezier improvements, going to have to do color rendering on GPU anyway
+				if(state.moving_color && state.s != NULL) state.s->color_update = true;
 				repaint(true);
 			}
 			break;
@@ -512,8 +579,21 @@ void mouse_press(bool left, int x, int y) {
 						if(p->visible && pow(p2.x-x, 2)+pow(p2.y-y, 2) < pow(8, 2)+pow(8, 2)) {
 							state.p = p;
 							state.p_o = s2a({p2.x-x, p2.y-y}, true);
+							state.moving_color = false;
 							state.action = Actions::MovingPoint;
 							break;
+						}
+					}
+					if(state.action == Actions::Idle && state.s != NULL) {
+						for(auto p = state.s->color_coords.begin(); p != state.s->color_coords.end(); ++p) {
+							point p2 = a2s(**p);
+							if(pow(p2.x-x, 2)+pow(p2.y-y, 2) < pow(8, 2)+pow(8, 2)) {
+								state.p = *p;
+								state.p_o = s2a({p2.x-x, p2.y-y}, true);
+								state.moving_color = true;
+								state.action = Actions::MovingPoint;
+								break;
+							}
 						}
 					}
 				}
@@ -539,6 +619,7 @@ void mouse_press(bool left, int x, int y) {
 							state.p_o = s2a({p2.x-x, p2.y-y}, true);
 							state.p_last = *p;
 							state.p_prefer = NULL;
+							state.moving_color = false;
 							state.action = Actions::MovingPointUnMerge;
 							break;
 						}

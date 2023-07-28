@@ -93,7 +93,8 @@ extern point t_a1, t_h1, t_a2, t_h2;
 struct bezier {
 	point *a1, *h1, *a2, *h2;
 	bool used = false;
-	point* endpoint(bool left) { return (!left) ? a2 : a1; }
+	point* anchor(bool left) { return (!left) ? a2 : a1; }
+	point* handle(bool left) { return (!left) ? h2 : h1; }
 	bezier split(double t, bool left) const {
 		if(left) {
 			// h1 may point to t_h1, would break .split().split()
@@ -143,10 +144,11 @@ struct bezier {
 		return ret;
 	}
 	void release() {
-		a1->remove_from(this); if(a1->use_count == 0) a1->release();
-		h1->remove_from(this); if(h1->use_count == 0) h1->release();
-		a2->remove_from(this); if(a2->use_count == 0) a2->release();
-		h2->remove_from(this); if(h2->use_count == 0) h2->release();
+		point* temp;
+		temp = a1; a1 = NULL; (*temp).remove_from(this); if(temp->use_count == 0) (*temp).release();
+		temp = h1; h1 = NULL; (*temp).remove_from(this); if(temp->use_count == 0) (*temp).release();
+		temp = a2; a2 = NULL; (*temp).remove_from(this); if(temp->use_count == 0) (*temp).release();
+		temp = h2; h2 = NULL; (*temp).remove_from(this); if(temp->use_count == 0) (*temp).release();
 		bezier_RS.release(this);
 	}
 };

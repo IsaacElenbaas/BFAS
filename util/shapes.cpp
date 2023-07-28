@@ -63,14 +63,15 @@ void Shape::apply_adds() {
 				// collection needs to see it is stale and remove it
 				else {
 					shapes.erase(&adding_shapes[i]->shape);
-					for(auto k = adding_shapes[i]->shape_data.begin(); k != adding_shapes[i]->shape_data.end(); ++k ) { (*k)->release(); }
+					for(auto k = adding_shapes[i]->shape_data.begin(); k != adding_shapes[i]->shape_data.end(); ++k) { (**k).release(); }
 					adding_shapes[i]->shape_data.clear();
 					adding_shapes[i]->shape.clear();
 				}
+				if(state.s == adding_shapes[i]) state.s = NULL;
 			}
 			else {
 				shapes.erase(&adding_shapes[i]->shape);
-				for(auto k = adding_shapes[i]->shape_data.begin(); k != adding_shapes[i]->shape_data.end(); ++k ) { (*k)->release(); }
+				for(auto k = adding_shapes[i]->shape_data.begin(); k != adding_shapes[i]->shape_data.end(); ++k) { (**k).release(); }
 				adding_shapes[i]->shape_data.clear();
 				adding_shapes[i]->shape.clear();
 				adding_shapes[i]->_add(*(std::next(before_best)));
@@ -81,7 +82,7 @@ void Shape::apply_adds() {
 					new_state_s = adding_shapes[i];
 			}
 		}
-		if(distance(add_shapes.begin(), add_shapes.end()) > 0 && (state.s == NULL || state.s->stale)) {
+		if(state.s == NULL && (new_state_s != NULL || distance(add_shapes.begin(), add_shapes.end()) > 0)) {
 			// may be filled below, not here
 			state.s = new_state_s;
 			repaint(false);
@@ -89,7 +90,10 @@ void Shape::apply_adds() {
 		// add shapes that didn't match with an old shape
 		for(auto shape = add_shapes.begin(); shape != add_shapes.end(); ++shape) {
 			Shape* new_shape = shape_RS.get();
-			new_shape->color_coords.clear();
+			while(!new_shape->color_coords.empty()) {
+				(*(new_shape->color_coords.front())).release();
+				new_shape->color_coords.erase_after(new_shape->color_coords.before_begin());
+			}
 			new_shape->colors.clear();
 			new_shape->color_count = 0;
 			new_shape->_add(*shape);
@@ -131,7 +135,7 @@ void Shape::_add(typeof(Shape::shape) shape) {
 		tl.y = std::min({tl.y, b->a1->y, b->h1->y, b->a2->y, b->h2->y});
 		br.x = std::max({br.x, b->a1->x, b->h1->x, b->a2->x, b->h2->x});
 		br.y = std::max({br.y, b->a1->y, b->h1->y, b->a2->y, b->h2->y});
-		bezier* temp = b->clone();
+		bezier* temp = (*b).clone();
 		last_data = shape_data.insert_after(last_data, temp);
 		last = this->shape.insert_after(last, {last_data, std::get<1>(*i), std::tuple_element<2, typeof(*i)>::type()});
 		beziers.insert({b, true});
@@ -271,7 +275,7 @@ void OpenGLShapeCollection::draw() {
 			c[c_i+10] = (*i)->color_count; c[c_i+11] = color_index;
 			// color SSBO
 			auto k = (*i)->colors.begin();
-			for(auto j = (*i)->color_coords.begin(); j != (*i)->color_coords.end(); ++j ) {
+			for(auto j = (*i)->color_coords.begin(); j != (*i)->color_coords.end(); ++j) {
 				color_data.insert(color_data.end(), {(GLfloat)((*j)->x/(double)cmax), (GLfloat)((*j)->y/(double)cmax)});
 				color_data.insert(color_data.end(), *k); ++k;
 				color_data.insert(color_data.end(), *k); ++k;

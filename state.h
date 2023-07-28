@@ -21,6 +21,7 @@ struct State {
 	point** p_prefer;
 	bezier* b;
 	Shape* s = NULL;
+	bool moving_color;
 };
 extern State state;
 #endif
