@@ -7,7 +7,8 @@
 #include <tuple>
 #include "resource.h"
 
-#define cmax std::numeric_limits<int>::max()
+typedef int ctype;
+#define cmax std::numeric_limits<ctype>::max()
 
 struct bezier;
 struct point;

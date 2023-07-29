@@ -15,7 +15,7 @@ void main() {
 		 2*(a_position.x-u_tl.x)*u_zoom-1,
 		-2*(a_position.y-u_tl.y)*u_zoom+1,
 		a_position.z,
-	1.0);
+	1);
 	real_position = a_position.xy;
 	bezier_data = a_bezier_data;
 	color_data = a_color_data;

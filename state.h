@@ -15,6 +15,7 @@ struct State {
 	point tl = {0, 0};
 	point br;
 	Actions action = Actions::Idle;
+	bool view_final = false;
 	point* p;
 	point p_o;
 	point p_last;
@@ -22,6 +23,7 @@ struct State {
 	bezier* b;
 	Shape* s = NULL;
 	bool moving_color;
+	point* last_color = NULL;
 };
 extern State state;
 #endif

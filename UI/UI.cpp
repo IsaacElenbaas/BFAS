@@ -1,10 +1,8 @@
-#include <QOpenGLShaderProgram>
 #include <QOpenGLWidget>
 #include <QPainter>
 #include "UI.h"
 
 extern QOpenGLWidget* canvas;
-QOpenGLShaderProgram* program;
 GLuint u_depth;
 QPainter* painter;
 QImage* pixels;

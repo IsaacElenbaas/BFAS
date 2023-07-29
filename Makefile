@@ -8,7 +8,9 @@ UTILS=$(patsubst %.cpp, %.o, $(wildcard ./util/*.cpp))
 .PHONY: all
 all: PFAS
 
-PFAS: UI/main.h UI/Makefile UI/main.cpp shape.vert shape.frag $(wildcard ./*.glsl) util/shapes.h UI/PFAS.o $(UTILS)
+PFAS: UI/Makefile UI/main.cpp UI/main.h shape.vert shape.frag $(wildcard ./*.glsl) \
+      UI/color_picker.cpp UI/color_picker.h UI/color_picker.vert UI/color_picker.frag \
+      util/shapes.h UI/PFAS.o $(UTILS)
 	$(MAKE) -C UI
 	mv UI/UI PFAS
 UI/PFAS.o: PFAS.cpp $(wildcard ./*.h) $(wildcard ./util/*.h) UI/UI.cpp

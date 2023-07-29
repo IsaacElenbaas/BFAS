@@ -1,5 +1,7 @@
 #include <QApplication>
 #include <QOpenGLFunctions>
+#include <QOpenGLShaderProgram>
+#include "color_picker.h"
 #include "main.h"
 #include "shapes.h"
 // TODO: remove
@@ -7,15 +9,9 @@
 
 QOpenGLWidget* canvas;
 
-GLuint u_zoom;
-GLuint u_tl;
-GLuint vbos[2];
-/* TODO
-Interpolating colors:
-	https://gwlucastrig.github.io/TinfourDocs/NaturalNeighborTinfourAlgorithm/index.html
-	If inside shape, natural neighbor interpolation
-	Else do natural neighbor of closest hull perimeter point
-*/
+static QOpenGLShaderProgram* program;
+static GLuint u_zoom;
+static GLuint u_tl;
 void Canvas::initializeGL() {
 	// TODO: use this instead of doing it in painter
 	glClearColor(0, 0, 0, 1);
@@ -40,7 +36,6 @@ void Canvas::initializeGL() {
 	// TODO: glDeleteBuffers in deconstructors
 }
 
-#include <stdio.h>
 void Canvas::paintGL() {
 	program->bind();
 	QOpenGLFunctions* f = context()->functions();
@@ -98,5 +93,10 @@ int main(int argc, char* argv[]) {
 	Canvas canvas;
 	::canvas = &canvas;
 	canvas.show();
+
+	ColorPickerWindow color_picker_window(&canvas);
+	color_picker_window.show();
+	color_picker_window.resize(300, 300);
+
 	return app.exec();
 }

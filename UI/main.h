@@ -6,7 +6,6 @@
 #include <QPainter>
 #include "PFAS.h"
 
-extern QOpenGLShaderProgram* program;
 extern QPainter* painter;
 extern QImage* pixels;
 extern bool repaint_later;

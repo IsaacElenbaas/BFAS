@@ -11,7 +11,6 @@
 #include "util.h"
 // TODO: remove
 #include <iostream>
-#include <random>
 
 // TODO: everything else should include UI.h
 #include "UI.cpp"
@@ -59,17 +58,18 @@ void paint_bezier(bezier b, bool highlight) {
 				continue;
 			}
 		}
-		set_pixel(left, 255, 0, (!highlight) ? 0 : 127, (highlight) ? 255 : 64);
+		set_pixel(left, 255, (highlight) ? 0 : 127, 0, (highlight) ? 255 : 64);
 		t += 2*step;
 		if(t <= 0) break;
 		if((t/(uint)step)%4 == 0) step *= 2;
 		left = a2s(b[t/max]);
 	}
-	set_pixel(a2s(b[1]), 255, 0, (!highlight) ? 0 : 127, (highlight) ? 255 : 64);
+	set_pixel(a2s(b[1]), 255, (highlight) ? 0 : 127, 0, (highlight) ? 255 : 64);
 }
 /*}}}*/
 
 void paint() {
+	if(state.view_final) return;
 	// fill shape with set_pixel
 	/*for(auto shape_shape = shapes.begin(); shape_shape != shapes.end(); ++shape_shape) {
 		auto shape = (*shape_shape).first;
@@ -405,6 +405,10 @@ void key_release(int key) {
 			state.s = NULL;
 			repaint(true);
 			break;
+		case 'F':
+			state.view_final = !state.view_final;
+			repaint(true);
+			break;
 		case 'C':
 			if(state.action != Actions::Idle) break;
 			if(state.s != NULL) {
@@ -412,11 +416,12 @@ void key_release(int key) {
 				*p = s2a(mouse);
 				state.s->color_coords.push_front(p);
 				state.s->colors.push_front(0);
-				state.s->colors.push_front((rand()%256)/255.0);
-				state.s->colors.push_front((rand()%256)/255.0);
-				state.s->colors.push_front((rand()%256)/255.0);
+				state.s->colors.push_front(1);
+				state.s->colors.push_front(1);
+				state.s->colors.push_front(1);
 				state.s->color_count++;
 				state.s->color_update = true;
+				state.last_color = p;
 				repaint(true);
 			}
 			else {
@@ -591,6 +596,7 @@ void mouse_press(bool left, int x, int y) {
 								state.p = *p;
 								state.p_o = s2a({p2.x-x, p2.y-y}, true);
 								state.moving_color = true;
+								state.last_color = state.p;
 								state.action = Actions::MovingPoint;
 								break;
 							}

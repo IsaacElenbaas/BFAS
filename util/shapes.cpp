@@ -227,8 +227,8 @@ void OpenGLShapeCollection::draw() {
 				p[p_i+ 3] = (*i)->br.x/(double)cmax; p[p_i+ 4] = (*i)->tl.y/(double)cmax; p[p_i+ 5] = (*i)->depth;
 				p[p_i+ 6] = (*i)->tl.x/(double)cmax; p[p_i+ 7] = (*i)->br.y/(double)cmax; p[p_i+ 8] = (*i)->depth;
 				p[p_i+ 9] = (*i)->tl.x/(double)cmax; p[p_i+10] = (*i)->br.y/(double)cmax; p[p_i+11] = (*i)->depth;
-				p[p_i+12] = (*i)->br.x/(double)cmax; p[p_i+13] = (*i)->tl.y/(double)cmax; p[p_i+14] = (*i)->depth;
-				p[p_i+15] = (*i)->br.x/(double)cmax; p[p_i+16] = (*i)->br.y/(double)cmax; p[p_i+17] = (*i)->depth;
+				p[p_i+12] = (*i)->br.x/(double)cmax; p[p_i+13] = (*i)->br.y/(double)cmax; p[p_i+14] = (*i)->depth;
+				p[p_i+15] = (*i)->br.x/(double)cmax; p[p_i+16] = (*i)->tl.y/(double)cmax; p[p_i+17] = (*i)->depth;
 				b[b_i+ 0] = (*i)->size; b[b_i+ 1] = bezier_index;
 				b[b_i+ 2] = (*i)->size; b[b_i+ 3] = bezier_index;
 				b[b_i+ 4] = (*i)->size; b[b_i+ 5] = bezier_index;
