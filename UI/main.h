@@ -1,5 +1,6 @@
 #ifndef MAIN_H
 #define MAIN_H
+#include <QHBoxLayout>
 #include <QOpenGLShaderProgram>
 #include <QOpenGLWidget>
 #include <QPaintEvent>
@@ -9,6 +10,12 @@
 extern QPainter* painter;
 extern QImage* pixels;
 extern bool repaint_later;
+
+class CanvasWindow : public QWidget {
+	Q_OBJECT
+public:
+	virtual void keyReleaseEvent(QKeyEvent* event);
+};
 
 class Canvas : public QOpenGLWidget {
 	Q_OBJECT
@@ -27,16 +34,10 @@ public:
 	virtual void initializeGL();
 	virtual void paintGL();
 	virtual void wheelEvent(QWheelEvent* event);
-	virtual void keyReleaseEvent(QKeyEvent* event);
 	virtual void mouseMoveEvent(QMouseEvent* event);
 	virtual void mousePressEvent(QMouseEvent* event);
 	virtual void mouseReleaseEvent(QMouseEvent* event);
 	virtual void mouseDoubleClickEvent(QMouseEvent* event);
-	virtual void resizeGL(int w, int h) {
-		::w = w; ::h = h;
-		delete pixels;
-		pixels = new QImage(w, h, QImage::Format_ARGB32);
-		zoom(0);
-	}
+	virtual void resizeGL(int w, int h);
 };
 #endif

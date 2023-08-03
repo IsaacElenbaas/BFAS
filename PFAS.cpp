@@ -1,5 +1,9 @@
 #include <algorithm>
 #include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <fstream>
+#include <iomanip>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -7,10 +11,22 @@
 #include "PFAS.h"
 #include "quadtree.h"
 #include "resource.h"
+#include "settings.h"
 #include "shapes.h"
 #include "util.h"
 // TODO: remove
 #include <iostream>
+
+#include <bit>
+template<typename T>
+constexpr T hton(T value) noexcept {
+	if(std::endian::native == std::endian::big) return value;
+	static_assert(std::has_unique_object_representations_v<T>, "T may not have padding bits");
+	auto value_representation = std::bit_cast<std::array<std::byte, sizeof(T)>>(value);
+	std::ranges::reverse(value_representation);
+	return std::bit_cast<T>(value_representation);
+}
+#define ntoh(value) hton(value)
 
 // TODO: everything else should include UI.h
 #include "UI.cpp"
@@ -21,6 +37,7 @@ point t_a1, t_h1, t_a2, t_h2;
 int w, h;
 point mouse;
 State state;
+Settings settings;
 Resource<point> point_RS;
 Resource<bezier> bezier_RS;
 QuadTree<point> point_QT(25);
@@ -33,7 +50,7 @@ void paint_bezier(bezier b, bool highlight) {
 	if(!b.intersecting(state.tl, state.br)) return;
 	// "sticky" - slowly subdivides less instead of ASAP - but no stack and works well in all cases
 	// unsigned to have higher precision than canvas, as lines can be diagonal
-	uint t = 0;
+	unsigned int t = 0;
 	double max = std::numeric_limits<uint>::max();
 	double step = (uint)max/2+1;
 	point left = a2s(b[0]);
@@ -230,9 +247,11 @@ void detect_shapes() {
 					used.insert({*std::get<0>(*i), true});
 				}
 				// put upper-leftmost bezier first before storing, try to account for different first shape discovery points
-				typeof(shape) normalized_shape = shape;
+				decltype(shape) normalized_shape = shape;
 				bezier* min = *std::get<0>(normalized_shape.front());
 				auto before_min = normalized_shape.before_begin();
+				// TODO: this will break if the upper-leftmost point is used by two beziers
+				// TODO: improve - pretty common state
 				for(auto i = ++normalized_shape.begin(), before_i = normalized_shape.begin(); i != normalized_shape.end(); before_i = i++) {
 					if(
 						(*std::get<0>(*i))->a1->x < min->a1->x ||
@@ -259,6 +278,7 @@ void detect_shapes() {
 }
 
 void zoom(double amount) {
+	if(settings.invert_scroll) amount *= -1;
 	point mouse_abs = s2a(mouse);
 	double last = state.zoom;
 	double next_linear = std::max(0.0, state.zoom_linear+amount);
@@ -415,10 +435,10 @@ void key_release(int key) {
 				point* p = point_RS.get();
 				*p = s2a(mouse);
 				state.s->color_coords.push_front(p);
-				state.s->colors.push_front(0);
-				state.s->colors.push_front(1);
-				state.s->colors.push_front(1);
-				state.s->colors.push_front(1);
+				state.s->colors.push_front(1); // a
+				state.s->colors.push_front(1); // b
+				state.s->colors.push_front(1); // g
+				state.s->colors.push_front(1); // r
 				state.s->color_count++;
 				state.s->color_update = true;
 				state.last_color = p;
@@ -528,7 +548,8 @@ void mouse_move(int x, int y) {
 							}
 						}
 					}
-					sort(close.begin(), close.end(), [](auto &lhs, auto &rhs) { return lhs.second < rhs.second; });
+					// TODO: . . . why, exactly, are we sorting by pointer here?
+					std::sort(close.begin(), close.end(), [](auto &lhs, auto &rhs) { return lhs.second < rhs.second; });
 					if(!close.empty()) {
 						bezier* b = state.p->used_by.front();
 						     if(b->a1 == state.p) { b->a1 = close[0].first; state.p_prefer = &b->a1; }
@@ -667,4 +688,372 @@ void mouse_release(bool left, int x, int y) {
 
 void mouse_double_click(bool left, int x, int y) {
 	
+}
+
+void save(const char* const path) {
+	std::ofstream file(path, std::ios::binary);
+	if(!file.is_open()) return;
+	// TODO: make sure to account for ctype possibly being bigger in the file than on this machine when reading
+	std::unordered_map<point*, size_t> points;
+	file << "resolution:" << settings.ratio_width << "x" << settings.ratio_height << std::endl;
+	{
+		QuadTree<point>::Region region = point_QT.region({0, 0}, {cmax, cmax});
+		if(region.next(false) != NULL)
+			file << "points:" << sizeof(ctype) << std::endl;
+	}
+	{
+		file.seekp(-1, std::ios_base::cur);
+		size_t i = 0;
+		QuadTree<point>::Region region = point_QT.region({0, 0}, {cmax, cmax});
+		for(point* p = region.next(false); p != NULL; p = region.next(false), i++) {
+			points.insert({p, i});
+			ctype x = hton(p->x); ctype y = hton(p->y);
+			file << "|";
+			file.write(reinterpret_cast<const char*>(&x), sizeof(x));
+			file.write(reinterpret_cast<const char*>(&y), sizeof(y));
+		}
+		file << std::endl;
+	}
+	size_t length = std::min((size_t)ceil(log2(points.size())/8), sizeof(size_t));
+	{
+		QuadTree<bezier>::Region region = bezier_QT.region({0, 0}, {cmax, cmax});
+		if(region.next(false) != NULL)
+			file << "beziers:" << length << std::endl;
+	}
+	{
+		file.seekp(-1, std::ios_base::cur);
+		QuadTree<bezier>::Region region = bezier_QT.region({0, 0}, {cmax, cmax});
+		for(bezier* b = region.next(false); b != NULL; b = region.next(false)) {
+			size_t a1 = hton(points.at(b->a1));
+			size_t h1 = hton(points.at(b->h1));
+			size_t a2 = hton(points.at(b->a2));
+			size_t h2 = hton(points.at(b->h2));
+			file << "|";
+			file.write(reinterpret_cast<const char*>(&a1)+sizeof(size_t)-length, length);
+			file.write(reinterpret_cast<const char*>(&h1)+sizeof(size_t)-length, length);
+			file.write(reinterpret_cast<const char*>(&a2)+sizeof(size_t)-length, length);
+			file.write(reinterpret_cast<const char*>(&h2)+sizeof(size_t)-length, length);
+		}
+		file << std::endl;
+	}
+	std::vector<Shape*> shapes;
+	for(auto shape = ::shapes.begin(); shape != ::shapes.end(); ++shape) {
+		shapes.push_back((*shape).second);
+	}
+	std::sort(shapes.begin(), shapes.end(), [](auto &lhs, auto &rhs) {
+		if(lhs->shape.empty()) return rhs->shape.empty();
+		if(rhs->shape.empty()) return true;
+		ShapeHasher shape_hasher;
+		size_t lhsh = shape_hasher(&(lhs->shape));
+		size_t rhsh = shape_hasher(&(rhs->shape));
+		if(lhsh < rhsh) return true;
+		if(lhsh > rhsh) return false;
+		if(lhs->tl.x < rhs->tl.x) return true;
+		if(lhs->tl.x > rhs->tl.x) return false;
+		if(lhs->tl.y < rhs->tl.y) return true;
+		if(lhs->tl.y > rhs->tl.y) return false;
+		if(lhs->br.x < rhs->br.x) return true;
+		if(lhs->br.x > rhs->br.x) return false;
+		if(lhs->br.y < rhs->br.y) return true;
+		if(lhs->br.y > rhs->br.y) return false;
+		if((*std::get<0>(lhs->shape.front()))->a1->x < (*std::get<0>(rhs->shape.front()))->a1->x) return true;
+		if((*std::get<0>(lhs->shape.front()))->a1->x > (*std::get<0>(rhs->shape.front()))->a1->x) return false;
+		if((*std::get<0>(lhs->shape.front()))->a1->y < (*std::get<0>(rhs->shape.front()))->a1->y) return true;
+		if((*std::get<0>(lhs->shape.front()))->a1->y > (*std::get<0>(rhs->shape.front()))->a1->y) return false;
+		// give up lol
+		return true;
+	});
+	for(auto shape = shapes.begin(); shape != shapes.end(); ++shape) {
+		if((*shape)->shape.empty()) break;
+		file << "color coords:" << sizeof(ctype) << std::endl;
+		file.seekp(-1, std::ios_base::cur);
+		for(auto p = (*shape)->color_coords.begin(); p != (*shape)->color_coords.end(); ++p) {
+			ctype x = hton((*p)->x); ctype y = hton((*p)->y);
+			file << "|";
+			file.write(reinterpret_cast<const char*>(&x), sizeof(x));
+			file.write(reinterpret_cast<const char*>(&y), sizeof(y));
+		}
+		file << std::endl;
+		file << "colors:" << std::endl;
+		file.seekp(-1, std::ios_base::cur);
+		for(auto rgba = (*shape)->colors.begin(); rgba != (*shape)->colors.end(); ) {
+			file << std::setw(3) << std::setfill('0') << (int)round((*rgba)*255); ++rgba;
+			file << std::setw(3) << std::setfill('0') << (int)round((*rgba)*255); ++rgba;
+			file << std::setw(3) << std::setfill('0') << (int)round((*rgba)*255); ++rgba;
+			file << std::setw(3) << std::setfill('0') << (int)round((*rgba)*255); ++rgba;
+		}
+		file << std::endl;
+	}
+}
+
+void load(const char* const path) {
+	std::ifstream file(path, std::ios::binary);
+	if(!file.is_open()) return;
+	enum ReadState {
+		READ_BASE,
+		READ_RESOLUTION,
+		READ_POINTS,
+		READ_BEZIERS,
+		READ_COLOR_COORDS,
+		READ_COLORS
+	};
+	ReadState state = READ_BASE;
+	int buffer_size = 100;
+	char buffer[buffer_size+1];
+	char* buffer_end = &buffer[buffer_size];
+	// for if we try to read past EOF
+	auto rewind_past = [](
+		std::ifstream* file,
+		const char* const buffer,
+		const char* const buffer_end,
+		const char* const buffer_pointer
+	) {
+		if(*file)
+			(*file).seekg(-(buffer_end-buffer_pointer)/sizeof(char)+1, std::ios_base::cur);
+		else {
+			(*file).clear();
+			(*file).seekg(-((*file).gcount()-(buffer_pointer-buffer)/sizeof(char))+1, std::ios_base::cur);
+		}
+	};
+	std::unordered_map<size_t, point*> points;
+	size_t p_i = 0;
+	std::vector<Shape*> shapes;
+	decltype(shapes.begin()) shape;
+	bool shapes_init = true;
+	bool done = false;
+	while(!done) {
+		switch(state) {
+			case READ_BASE:
+				{
+					file.read(buffer, buffer_size);
+					if(file.gcount() == 0 && file.eof()) { done = true; break; }
+					char* colon = std::find(buffer, buffer_end, ':');
+					if(colon == buffer_end || *colon != ':') return;
+					*colon = '\0';
+					rewind_past(&file, buffer, buffer_end, colon);
+					     if(strcmp(buffer, "resolution"  ) == 0) state = READ_RESOLUTION;
+					else if(strcmp(buffer, "points"      ) == 0) state = READ_POINTS;
+					else if(strcmp(buffer, "beziers"     ) == 0) state = READ_BEZIERS;
+					else if(strcmp(buffer, "color coords") == 0) state = READ_COLOR_COORDS;
+					else if(strcmp(buffer, "colors"      ) == 0) state = READ_COLORS;
+				}
+				break;
+			case READ_RESOLUTION:
+				{
+					file.read(buffer, buffer_size);
+					char* nl = std::min(
+						std::find(buffer, buffer_end, '\r'),
+						std::find(buffer, buffer_end, '\n')
+					);
+					if(nl == buffer_end) return;
+					if(*nl == '\r') { *nl = '\0'; nl++; }
+					else if(*nl != '\n') return;
+					*nl = '\0';
+					rewind_past(&file, buffer, buffer_end, nl);
+					if(sscanf(buffer, "%ux%u", &settings.ratio_width, &settings.ratio_height) != 2)
+						return;
+					// TODO: resize
+					state = READ_BASE;
+				}
+				break;
+			case READ_POINTS:
+				{
+					file.read(buffer, buffer_size);
+					char* pipe = std::find(buffer, buffer_end, '|');
+					if(pipe == buffer_end || *pipe != '|') return;
+					*pipe = '\0';
+					rewind_past(&file, buffer, buffer_end, pipe-1);
+					unsigned int length;
+					char length_buffer[sizeof(size_t)];
+					if(sscanf(buffer, "%u", &length) != 1)
+						return;
+					long double length_cmax = (((size_t)1) << (8*length-1))-1;
+					while(true) {
+						file.read(buffer, buffer_size);
+						char* i;
+						// adding 2 for \r\n
+						for(i = buffer; i+sizeof(char) <= buffer_end-(2*length+2*sizeof(char)); i += 2*length+sizeof(char), p_i++) {
+							if(*i != '|') break;
+							point* p = point_RS.get();
+							memset(length_buffer, 0, sizeof(size_t));
+							memcpy(length_buffer+sizeof(size_t)-length, i+sizeof(char), length);
+							p->x = cmax*(ntoh(*reinterpret_cast<size_t*>(length_buffer))/length_cmax);
+							memset(length_buffer, 0, sizeof(size_t));
+							memcpy(length_buffer+sizeof(size_t)-length, i+sizeof(char)+length, length);
+							p->y = cmax*(ntoh(*reinterpret_cast<size_t*>(length_buffer))/length_cmax);
+							p->use_count = 0;
+							point_QT.insert(p);
+							points.insert({p_i, p});
+						}
+						if(*i != '|') {
+							if(*i == '\r') i++;
+							if(*i == '\n') {
+								rewind_past(&file, buffer, buffer_end, i);
+								break;
+							}
+							else return;
+						}
+						rewind_past(&file, buffer, buffer_end, i-1);
+					}
+					state = READ_BASE;
+				}
+				break;
+			case READ_BEZIERS:
+				{
+					file.read(buffer, buffer_size);
+					char* pipe = std::find(buffer, buffer_end, '|');
+					if(pipe == buffer_end || *pipe != '|') return;
+					*pipe = '\0';
+					rewind_past(&file, buffer, buffer_end, pipe-1);
+					unsigned int length;
+					char length_buffer[sizeof(size_t)];
+					if(sscanf(buffer, "%u", &length) != 1)
+						return;
+					while(true) {
+						file.read(buffer, buffer_size);
+						char* i;
+						// adding 2 for \r\n
+						for(i = buffer; i+sizeof(char) <= buffer_end-(4*length+2*sizeof(char)); i += 4*length+sizeof(char)) {
+							if(*i != '|') break;
+							bezier* b = bezier_RS.get();
+							memset(length_buffer, 0, sizeof(size_t));
+							memcpy(length_buffer+sizeof(size_t)-length, i+sizeof(char), length);
+							b->a1 = points.at(ntoh(*reinterpret_cast<size_t*>(length_buffer)));
+							memset(length_buffer, 0, sizeof(size_t));
+							memcpy(length_buffer+sizeof(size_t)-length, i+sizeof(char)+length, length);
+							b->h1 = points.at(ntoh(*reinterpret_cast<size_t*>(length_buffer)));
+							memset(length_buffer, 0, sizeof(size_t));
+							memcpy(length_buffer+sizeof(size_t)-length, i+sizeof(char)+2*length, length);
+							b->a2 = points.at(ntoh(*reinterpret_cast<size_t*>(length_buffer)));
+							memset(length_buffer, 0, sizeof(size_t));
+							memcpy(length_buffer+sizeof(size_t)-length, i+sizeof(char)+3*length, length);
+							b->h2 = points.at(ntoh(*reinterpret_cast<size_t*>(length_buffer)));
+							(*(b->a1)).add_to(b);
+							(*(b->h1)).add_to(b);
+							(*(b->a2)).add_to(b);
+							(*(b->h2)).add_to(b);
+							bezier_QT.insert(b);
+						}
+						if(*i != '|') {
+							if(*i == '\r') i++;
+							if(*i == '\n') {
+								rewind_past(&file, buffer, buffer_end, i);
+								break;
+							}
+							else return;
+						}
+						rewind_past(&file, buffer, buffer_end, i-1);
+					}
+					state = READ_BASE;
+				}
+				break;
+			case READ_COLOR_COORDS:
+				if(shapes_init) {
+					repaint(true);
+					for(auto shape = ::shapes.begin(); shape != ::shapes.end(); ++shape) {
+						shapes.push_back((*shape).second);
+					}
+					std::sort(shapes.begin(), shapes.end(), [](auto &lhs, auto &rhs) {
+						ShapeHasher shape_hasher;
+						size_t lhsh = shape_hasher(&(lhs->shape));
+						size_t rhsh = shape_hasher(&(rhs->shape));
+						if(lhsh < rhsh) return true;
+						if(lhsh > rhsh) return false;
+						if(lhs->tl.x < rhs->tl.x) return true;
+						if(lhs->tl.x > rhs->tl.x) return false;
+						if(lhs->tl.y < rhs->tl.y) return true;
+						if(lhs->tl.y > rhs->tl.y) return false;
+						if(lhs->br.x < rhs->br.x) return true;
+						if(lhs->br.x > rhs->br.x) return false;
+						if(lhs->br.y < rhs->br.y) return true;
+						if(lhs->br.y > rhs->br.y) return false;
+						if((*std::get<0>(lhs->shape.front()))->a1->x < (*std::get<0>(rhs->shape.front()))->a1->x) return true;
+						if((*std::get<0>(lhs->shape.front()))->a1->x > (*std::get<0>(rhs->shape.front()))->a1->x) return false;
+						if((*std::get<0>(lhs->shape.front()))->a1->y < (*std::get<0>(rhs->shape.front()))->a1->y) return true;
+						if((*std::get<0>(lhs->shape.front()))->a1->y > (*std::get<0>(rhs->shape.front()))->a1->y) return false;
+						// give up lol
+						return true;
+					});
+					shape = shapes.begin();
+					shapes_init = false;
+				}
+				{
+					file.read(buffer, buffer_size);
+					char* pipe = std::find(buffer, buffer_end, '|');
+					char* nl = std::find(buffer, buffer_end, '\n');
+					if(nl < pipe) {
+						rewind_past(&file, buffer, buffer_end, nl);
+						state = READ_BASE;
+						break;
+					}
+					if(pipe == buffer_end || *pipe != '|') return;
+					*pipe = '\0';
+					rewind_past(&file, buffer, buffer_end, pipe-1);
+					unsigned int length;
+					char length_buffer[sizeof(size_t)];
+					if(sscanf(buffer, "%u", &length) != 1)
+						return;
+					long double length_cmax = (((size_t)1) << (8*length-1))-1;
+					while(true) {
+						file.read(buffer, buffer_size);
+						char* i;
+						// adding 2 for \r\n
+						for(i = buffer; i+sizeof(char) <= buffer_end-(2*length+2*sizeof(char)); i += 2*length+sizeof(char), p_i++) {
+							if(*i != '|') break;
+							point* p = point_RS.get();
+							memset(length_buffer, 0, sizeof(size_t));
+							memcpy(length_buffer+sizeof(size_t)-length, i+sizeof(char), length);
+							p->x = cmax*(ntoh(*reinterpret_cast<size_t*>(length_buffer))/length_cmax);
+							memset(length_buffer, 0, sizeof(size_t));
+							memcpy(length_buffer+sizeof(size_t)-length, i+sizeof(char)+length, length);
+							p->y = cmax*(ntoh(*reinterpret_cast<size_t*>(length_buffer))/length_cmax);
+							(*shape)->color_coords.push_front(p);
+							(*shape)->color_count++;
+						}
+						if(*i != '|') {
+							if(*i == '\r') i++;
+							if(*i == '\n') {
+								rewind_past(&file, buffer, buffer_end, i);
+								break;
+							}
+							else return;
+						}
+						rewind_past(&file, buffer, buffer_end, i-1);
+					}
+					state = READ_BASE;
+				}
+				break;
+			case READ_COLORS:
+				if((*shape)->color_count > 0) {
+					size_t count = 0;
+					while(count < (*shape)->color_count) {
+						file.read(buffer, buffer_size);
+						char* i;
+						for(i = buffer; i < buffer_end-12*sizeof(char) && count < (*shape)->color_count; i += 12*sizeof(char), count++) {
+							unsigned int r, g, b, a;
+							if(sscanf(i, "%03u%03u%03u%03u", &r, &g, &b, &a) != 4)
+								return;
+							(*shape)->colors.push_front(a/255.0);
+							(*shape)->colors.push_front(b/255.0);
+							(*shape)->colors.push_front(g/255.0);
+							(*shape)->colors.push_front(r/255.0);
+						}
+						rewind_past(&file, buffer, buffer_end, i-sizeof(char));
+					}
+					(*shape)->color_update = true;
+				}
+				++shape;
+				file.read(buffer, buffer_size);
+				rewind_past(&file, buffer, buffer_end, (*buffer == '\n') ? buffer : buffer+1);
+				state = READ_BASE;
+				break;
+		}
+	}
+	::state.s = NULL;
+	// TODO: resize canvas - may not need to trigger a resize then
+	repaint(true);
+}
+
+void render(const char* const path) {
+	// TODO: probably needs to happen in main.cpp actually
 }

@@ -3,6 +3,8 @@
 #include <QOpenGLShaderProgram>
 #include "color_picker.h"
 #include "main.h"
+#include "settings.h"
+#include "settings_UI.h"
 #include "shapes.h"
 // TODO: remove
 #include <iostream>
@@ -10,12 +12,12 @@
 QOpenGLWidget* canvas;
 
 static QOpenGLShaderProgram* program;
+static GLuint u_enable_voronoi;
+static GLuint u_enable_influenced;
+static GLuint u_enable_fireworks;
 static GLuint u_zoom;
 static GLuint u_tl;
 void Canvas::initializeGL() {
-	// TODO: use this instead of doing it in painter
-	glClearColor(0, 0, 0, 1);
-
 	program = new QOpenGLShaderProgram;
 	program->addShaderFromSourceCode(QOpenGLShader::Vertex,
 		#include "../shape.vert"
@@ -28,6 +30,9 @@ void Canvas::initializeGL() {
 	program->bindAttributeLocation("a_color_data", 2);
 	program->link();
 	program->bind();
+	u_enable_voronoi = program->uniformLocation("u_enable_voronoi");
+	u_enable_influenced = program->uniformLocation("u_enable_influenced");
+	u_enable_fireworks = program->uniformLocation("u_enable_fireworks");
 	u_zoom = program->uniformLocation("u_zoom");
 	u_tl = program->uniformLocation("u_tl");
 	context()->functions()->initializeOpenGLFunctions();
@@ -39,8 +44,12 @@ void Canvas::initializeGL() {
 void Canvas::paintGL() {
 	program->bind();
 	QOpenGLFunctions* f = context()->functions();
-	//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	//glEnable(GL_DEPTH_TEST);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_BLEND);
+	program->setUniformValue(u_enable_voronoi, settings.enable_voronoi);
+	program->setUniformValue(u_enable_influenced, settings.enable_influenced);
+	program->setUniformValue(u_enable_fireworks, settings.enable_fireworks);
 	program->setUniformValue(u_zoom, (GLfloat)state.zoom);
 	program->setUniformValue(u_tl, (GLfloat)(state.tl.x/(double)cmax), (GLfloat)(state.tl.y/(double)cmax));
 	detect_shapes();
@@ -66,7 +75,7 @@ void Canvas::paintGL() {
 
 void Canvas::wheelEvent(QWheelEvent* event) { zoom(2*event->angleDelta().y()/8.0/360); }
 
-void Canvas::keyReleaseEvent(QKeyEvent* event) { key_release(event->key()); }
+void CanvasWindow::keyReleaseEvent(QKeyEvent* event) { key_release(event->key()); }
 
 void Canvas::mouseMoveEvent(QMouseEvent* event) { mouse_move(std::max(0, std::min(event->x(), w)), std::max(0, std::min(event->y(), h))); }
 
@@ -85,18 +94,51 @@ void Canvas::mouseDoubleClickEvent(QMouseEvent* event) {
 	mouse_double_click(event->button() == Qt::LeftButton, std::max(0, std::min(event->x(), w)), std::max(0, std::min(event->y(), h)));
 }
 
+void Canvas::resizeGL(int w, int h) {
+	double ratio = settings.ratio_width/(double)settings.ratio_height;
+	if(abs(w-ratio*h)/2 > 2 || w == 1) {
+		setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+		QMargins existing = parentWidget()->layout()->contentsMargins();
+		w += existing.left()+existing.right();
+		h += existing.top()+existing.bottom();
+		h *= ratio;
+		parentWidget()->layout()->setContentsMargins(
+			std::max(0, w-h)/2,
+			std::max(0, (int)round((h-w)/ratio))/2,
+			std::max(0, w-h)/2,
+			std::max(0, (int)round((h-w)/ratio))/2
+		);
+		return;
+	}
+	else {
+		::w = w; ::h = h;
+		delete pixels;
+		pixels = new QImage(w, h, QImage::Format_ARGB32);
+		zoom(0);
+	}
+}
+
+
 int main(int argc, char* argv[]) {
 	QApplication app(argc, argv);
 	QCoreApplication::setApplicationName("PFAS");
 	QCoreApplication::setOrganizationName("Programmatic Flat Art Studio");
-	//resize(512, 512);
+
+	CanvasWindow window;
+	QHBoxLayout layout;
 	Canvas canvas;
 	::canvas = &canvas;
-	canvas.show();
+	layout.addWidget(&canvas);
+	window.setLayout(&layout);
+	window.show();
+	window.resize(800, 800);
 
 	ColorPickerWindow color_picker_window(&canvas);
 	color_picker_window.show();
 	color_picker_window.resize(300, 300);
+
+	SettingsWindow settings;
+	settings.show();
 
 	return app.exec();
 }

@@ -1,6 +1,7 @@
 #ifndef SHAPES_H
 #define SHAPES_H
 #include <forward_list>
+#include <list>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
@@ -17,7 +18,7 @@ public:
 private:
 	std::forward_list<bezier*> shape_data;
 	bool update;
-	void _add(typeof(Shape::shape) shape);
+	void _add(decltype(Shape::shape) shape);
 public:
 	bool stale;
 	bool fresh;
@@ -30,13 +31,13 @@ public:
 	size_t color_count;
 	bool color_update;
 	friend class OpenGLShapeCollection;
-	static void add(typeof(Shape::shape) shape);
+	static void add(decltype(Shape::shape) shape);
 	static void apply_adds();
 	void release();
 };
 
 class OpenGLShapeCollection {
-	std::forward_list<Shape*> shapes;
+	std::list<Shape*> shapes;
 	unsigned long vbos[3];
 	unsigned long ssbos[2];
 	void* data;
@@ -44,7 +45,7 @@ class OpenGLShapeCollection {
 	size_t capacity = SHAPE_COLLECTION_BEZIERS;
 	bool update = false;
 public:
-	friend void Shape::_add(typeof(shape) shape);
+	friend void Shape::_add(decltype(shape) shape);
 	OpenGLShapeCollection();
 	~OpenGLShapeCollection();
 	void draw();
@@ -53,13 +54,13 @@ public:
 
 class ShapeHasher {
 public:
-	size_t operator()(typeof(Shape::shape)* const& shape) const;
+	size_t operator()(decltype(Shape::shape)* const& shape) const;
 };
 class ShapeComparator {
 public:
-	bool operator()(typeof(Shape::shape)* const& a, typeof(Shape::shape)* const& b) const;
+	bool operator()(decltype(Shape::shape)* const& a, decltype(Shape::shape)* const& b) const;
 };
 
-extern std::unordered_map<typeof(Shape::shape)*, Shape*, ShapeHasher, ShapeComparator> shapes;
+extern std::unordered_map<decltype(Shape::shape)*, Shape*, ShapeHasher, ShapeComparator> shapes;
 extern std::forward_list<OpenGLShapeCollection*> shape_collections;
 #endif

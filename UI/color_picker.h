@@ -17,6 +17,19 @@ public:
 	}
 	virtual void initializeGL();
 	virtual void paintGL();
+	virtual void resizeGL(int w, int h) {
+		if(abs(w-h)/2 > 2) {
+			QMargins existing = parentWidget()->layout()->contentsMargins();
+			w += existing.left()+existing.right();
+			h += existing.top()+existing.bottom();
+			parentWidget()->layout()->setContentsMargins(
+				std::max(0, w-h)/2,
+				std::max(0, h-w)/2,
+				std::max(0, w-h)/2,
+				std::max(0, h-w)/2
+			);
+		}
+	}
 	virtual void wheelEvent(QWheelEvent* event);
 	virtual void mouseMoveEvent(QMouseEvent* event);
 	virtual void mousePressEvent(QMouseEvent* event);
@@ -27,7 +40,7 @@ extern ColorPicker* color_picker;
 class ColorPickerSlider : public QSlider {
 	Q_OBJECT
 public:
-	ColorPickerSlider(QWidget* parent = NULL) : QSlider(Qt::Vertical, parent) {
+	ColorPickerSlider(QWidget* parent = NULL) : QSlider(parent) {
 		setTracking(true);
 		setValue(maximum());
 		connect(this, SIGNAL(valueChanged(int)), this, SLOT(valueChangedEvent(int)));
@@ -38,16 +51,25 @@ public Q_SLOTS:
 
 class ColorPickerWindow : public QWidget {
 	Q_OBJECT
-	QHBoxLayout layout;
+	QVBoxLayout vbox;
+	QHBoxLayout hbox;
+	QWidget color_picker_widget;
+	QHBoxLayout color_picker_layout;
 	ColorPicker color_picker;
-	ColorPickerSlider slider;
+	ColorPickerSlider opacity_slider;
 public:
+	ColorPickerSlider lightness_slider;
 	ColorPickerWindow(QWidget* parent = NULL) : QWidget(parent) {
 		::color_picker = &color_picker;
 		setWindowFlags(Qt::Tool);
-		layout.addWidget(&color_picker);
-		layout.addWidget(&slider);
-		setLayout(&layout);
+		vbox.addLayout(&hbox);
+			hbox.addWidget(&color_picker_widget);
+				color_picker_layout.addWidget(&color_picker);
+				color_picker_widget.setLayout(&color_picker_layout);
+			hbox.addWidget(&lightness_slider);
+		vbox.addWidget(&opacity_slider);
+		opacity_slider.setOrientation(Qt::Horizontal);
+		setLayout(&vbox);
 	}
 	virtual void keyReleaseEvent(QKeyEvent* event);
 };

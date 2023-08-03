@@ -14,12 +14,12 @@
 extern QuadTree<point> point_QT;
 extern QuadTree<bezier> bezier_QT;
 
-std::unordered_map<typeof(Shape::shape)*, Shape*, ShapeHasher, ShapeComparator> shapes;
-static std::forward_list<typeof(Shape::shape)> add_shapes;
+std::unordered_map<decltype(Shape::shape)*, Shape*, ShapeHasher, ShapeComparator> shapes;
+static std::forward_list<decltype(Shape::shape)> add_shapes;
 std::forward_list<OpenGLShapeCollection*> shape_collections;
 Resource<Shape> shape_RS;
 
-void Shape::add(typeof(Shape::shape) shape) { add_shapes.push_front(shape); }
+void Shape::add(decltype(Shape::shape) shape) { add_shapes.push_front(shape); }
 void Shape::apply_adds() {
 	// try to match up shapes with their old objects to preserve colors and active shape between quick disconnections
 	size_t to_match = distance(add_shapes.begin(), add_shapes.end());
@@ -120,7 +120,7 @@ void Shape::apply_adds() {
 		}
 	}
 }
-void Shape::_add(typeof(Shape::shape) shape) {
+void Shape::_add(decltype(Shape::shape) shape) {
 	beziers.clear();
 	update = true;
 	// need to copy data because moving a point would change the hash of the old shape and we can't find it anymore
@@ -137,7 +137,8 @@ void Shape::_add(typeof(Shape::shape) shape) {
 		br.y = std::max({br.y, b->a1->y, b->h1->y, b->a2->y, b->h2->y});
 		bezier* temp = (*b).clone();
 		last_data = shape_data.insert_after(last_data, temp);
-		last = this->shape.insert_after(last, {last_data, std::get<1>(*i), std::tuple_element<2, typeof(*i)>::type()});
+		// third component is unused
+		last = this->shape.insert_after(last, {last_data, std::get<1>(*i), std::get<2>(*i)});
 		beziers.insert({b, true});
 	}
 	depth = 0;
@@ -189,7 +190,7 @@ void OpenGLShapeCollection::draw() {
 	size_t update_index = (update) ? 0 : std::numeric_limits<size_t>::max();
 	std::vector<GLfloat> bezier_data;
 	size_t index = 0;
-	for(auto i = shapes.begin(), last = shapes.before_begin(); i != shapes.end(); ) {
+	for(auto i = shapes.rbegin(); i != shapes.rend(); ) {
 		if((*i)->stale) {
 			// TODO: not cleaning these up - should probably happen in pack though
 			// TODO: leave one empty one
@@ -197,7 +198,7 @@ void OpenGLShapeCollection::draw() {
 			if((*i)->shape.empty()) shape_RS.release(*i);
 			update = true;
 			update_index = std::min(index, update_index);
-			i = shapes.erase_after(last);
+			i = std::reverse_iterator(shapes.erase(std::next(i).base()));
 		}
 		else {
 			if(update || (*i)->update) {
@@ -211,7 +212,7 @@ void OpenGLShapeCollection::draw() {
 			}
 			(*i)->stale = true;
 			index++;
-			last = i++;
+			i++;
 		}
 	}
 	QOpenGLFunctions* f = QOpenGLContext::currentContext()->functions();
@@ -221,7 +222,7 @@ void OpenGLShapeCollection::draw() {
 		size_t p_i = 0, b_i = 0;
 		size_t bezier_index = 0;
 		index = 0;
-		for(auto i = shapes.begin(); i != shapes.end(); ++i) {
+		for(auto i = shapes.rbegin(); i != shapes.rend(); ++i) {
 			if(index >= update_index) {
 				p[p_i+ 0] = (*i)->tl.x/(double)cmax; p[p_i+ 1] = (*i)->tl.y/(double)cmax; p[p_i+ 2] = (*i)->depth;
 				p[p_i+ 3] = (*i)->br.x/(double)cmax; p[p_i+ 4] = (*i)->tl.y/(double)cmax; p[p_i+ 5] = (*i)->depth;
@@ -265,7 +266,7 @@ void OpenGLShapeCollection::draw() {
 		std::vector<GLfloat> color_data;
 		size_t c_i = 0;
 		size_t color_index = 0;
-		for(auto i = shapes.begin(); i != shapes.end(); ++i) {
+		for(auto i = shapes.rbegin(); i != shapes.rend(); ++i) {
 			// color info
 			c[c_i+ 0] = (*i)->color_count; c[c_i+ 1] = color_index;
 			c[c_i+ 2] = (*i)->color_count; c[c_i+ 3] = color_index;
@@ -291,7 +292,6 @@ void OpenGLShapeCollection::draw() {
 		// color SSBO
 		f->glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbos[1]);
 		f->glBufferData(GL_SHADER_STORAGE_BUFFER, color_data.size()*sizeof(GLfloat), color_data.data(), GL_STATIC_DRAW);
-		color_update = false;
 	}
 	// coordinates and bezier info
 	f->glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
@@ -318,7 +318,7 @@ void OpenGLShapeCollection::pack(OpenGLShapeCollection* other) {
 	// TODO: set update to true
 }
 
-size_t ShapeHasher::operator()(typeof(Shape::shape)* const& shape) const {
+size_t ShapeHasher::operator()(decltype(Shape::shape)* const& shape) const {
 	std::hash<decltype(point().x)> hasher;
 	size_t hash_value = 0;
 	for(auto i = shape->begin(); i != shape->end(); ++i) {
@@ -335,7 +335,7 @@ size_t ShapeHasher::operator()(typeof(Shape::shape)* const& shape) const {
 	return hash_value;
 }
 
-bool ShapeComparator::operator()(typeof(Shape::shape)* const& a, typeof(Shape::shape)* const& b) const {
+bool ShapeComparator::operator()(decltype(Shape::shape)* const& a, decltype(Shape::shape)* const& b) const {
 	auto i = a->begin(), j = b->begin();
 	for(; i != a->end(); ++i, ++j) {
 		if(j == b->end()) return false;
