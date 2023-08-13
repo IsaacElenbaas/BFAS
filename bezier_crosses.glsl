@@ -24,12 +24,12 @@ int bezier_crosses() {
 	float a = (3*a1-6*h1+3*h2)/d;
 	float b = (-3*a1+3*h1)/d;
 	float c = a1/d;
-	float p = (3*b - a*a)/3;
-	float q = (2*a*a*a - 9*a*b + 27*c)/27;
+	float p = (3*b-a*a)/3;
+	float q = (2*a*a*a-9*a*b+27*c)/27;
 	float q2 = q/2;
 	// GLSL doesn't return negative for pow(-X, 3) - or even 3 if X is a float, converts
 	// was the cause of many headaches
-	float discriminant = q2*q2 + p*p*p/27;
+	float discriminant = q2*q2+p*p*p/27;
 	float x[3];
 	int sols = 0;
 
@@ -57,8 +57,7 @@ int bezier_crosses() {
 	for(int i = sols-1; i >= 0; --i) {
 		float t = x[i];
 		vec2 p = bezier_crosses_bez_pos(x[i]);
-		// p comparisons fix horizontal lines at anchor intersections
-		if(t <= 0 || t >= 1) {
+		if(t < 0 || t > 1) {
 			x[i] = x[sols-1];
 			--sols;
 		}

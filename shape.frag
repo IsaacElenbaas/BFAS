@@ -42,8 +42,6 @@ void main() {
 		bezier_crosses_bez.h2 = beziers[4*(int(bezier_data[1])+i)+3];
 		crosses += bezier_crosses();
 	}
-	// TODO: anchors should be counted if one handle is above horizontal and one is below
-	// TODO: . . . issue is we don't have one of the handles here
 	if((crosses & 1) != 1)
 		discard;
 	for(int i = 0; i < 3*int(color_data[0]); i += 3) {
@@ -88,7 +86,7 @@ void main() {
 			bool outside_hull = false;
 			// check if position is outside hull of the colors, if so it should use linear interpolation between the two points making up the closest line
 			c_s[color_count] = c_s[0];
-			for(int i = 0; i < color_count; i++) {
+			for(int i = 0; i < color_count; ++i) {
 				if(cross(vec3(colors[c_s[i+1]]-position, 0), vec3(colors[c_s[i]]-position, 0)).z >= 0) {
 					outside_hull = true;
 					break;

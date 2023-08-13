@@ -1,0 +1,5 @@
+/PFAS
+.*
+*.o
+/UI/moc_*
+/UI/Makefile

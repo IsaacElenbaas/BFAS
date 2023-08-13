@@ -96,7 +96,7 @@ void paint() {
 				for(auto i = shape->begin(); i != shape->end(); ++i) {
 					crosses += bezier_crosses(s2a({x, y}), **std::get<0>(*i));
 				}
-				if(crosses & 1)
+				if((crosses) & 1)
 					set_pixel({x, y}, 0, 255, 0, 64);
 			}
 		}
@@ -146,14 +146,14 @@ void detect_shapes() {
 	// TODO: not sure if this should be the whole canvas or just the screen for shape detection or not - make it a setting?
 	// TODO: (in regards to lots of graphics objects being created and destroyed while zooming)
 	QuadTree<bezier>::Region region = bezier_QT.region(state.tl, state.br);
-	std::unordered_map<bezier*, bool> used;
+	for(bezier* b = region.next(false); b != NULL; b = region.next(false)) { b->used = false; }
+	region = bezier_QT.region(state.tl, state.br);
+	std::unordered_map<bezier*, bool> searched;
 	std::unordered_map<point*, bool> shape_points;
 	std::forward_list<std::tuple<decltype(point().used_by.begin()), bool, decltype(point().used_by.end())>> shape;
 	// DFS for loops (shapes) from each bezier
-	// doesn't search from a bezier if it was used in a shape previously
+	// doesn't use a bezier if it was searched from previously
 	for(bezier* b = region.next(false); b != NULL; b = region.next(false)) {
-		if(used.find(b) != used.end()) continue;
-		b->used = false;
 		shape_points[b->a1] = true;
 		auto start = b->a2->used_by.begin();
 		while(*start != b) { ++start; }
@@ -173,7 +173,9 @@ void detect_shapes() {
 			while(
 				next_b != anchor->used_by.end() &&
 				(
+					// don't go backwards along same bezier
 					*next_b == last_b ||
+					searched.find(*next_b) != searched.end() ||
 					// handles have used_by too, don't want to follow them
 					(anchor != (*next_b)->a1 && anchor != (*next_b)->a2)
 				)
@@ -188,8 +190,8 @@ void detect_shapes() {
 				point* next_anchor = (**next_b).anchor(next_left);
 				if(
 					shape_points.find(next_anchor) != shape_points.end() &&
-					// need to check solutions for whether they are a solution lol
-					(next_anchor != b->a1 || *next_b == b)
+					// need to check solutions for whether they are a solution though lol
+					next_anchor != b->a1
 				) {
 					backtracked = true;
 					continue;
@@ -204,6 +206,7 @@ void detect_shapes() {
 					(
 						// don't go backwards along same bezier
 						*alt_b == last_b ||
+						searched.find(*alt_b) != searched.end() ||
 						// handles have used_by too, don't want to follow them
 						(anchor != (*alt_b)->a1 && anchor != (*alt_b)->a2)
 					)
@@ -222,8 +225,8 @@ void detect_shapes() {
 					point* alt_anchor = (**alt_b).anchor(alt_left);
 					if(
 						shape_points.find(alt_anchor) != shape_points.end() &&
-						// need to check solutions for whether they are a solution lol
-						(alt_anchor != b->a1 || *alt_b == b)
+						// need to check solutions for whether they are a solution though lol
+						alt_anchor != b->a1
 					) {
 						backtracked = true;
 						continue;
@@ -244,7 +247,6 @@ void detect_shapes() {
 			if((**std::get<0>(shape.front())).anchor(std::get<1>(shape.front())) == b->a1) {
 				for(auto i = shape.begin(); i != shape.end(); ++i) {
 					(*std::get<0>(*i))->used = true;
-					used.insert({*std::get<0>(*i), true});
 				}
 				// put upper-leftmost bezier first before storing, try to account for different first shape discovery points
 				decltype(shape) normalized_shape = shape;
@@ -274,6 +276,7 @@ void detect_shapes() {
 			}
 		}
 		shape_points.erase(b->a1);
+		searched.insert({b, true});
 	}
 }
 
@@ -414,8 +417,36 @@ void key_release(int key) {
 						break;
 					}
 				}
-				if(state.s == last_s)
-					state.s = (!under_cursor.empty()) ? under_cursor.front() : NULL;
+				if(state.s == last_s) {
+					// try to select a colored shape first
+					for(auto shape = under_cursor.begin(); shape != under_cursor.end(); ++shape) {
+						if((*shape)->color_count != 0) {
+							state.s = *shape;
+							break;
+						}
+					}
+					if(state.s == last_s)
+						state.s = (!under_cursor.empty()) ? under_cursor.front() : NULL;
+				}
+				// cycle through the colored shapes first, then uncolored
+				else if((state.s->color_count != 0) != (last_s->color_count != 0)) {
+					auto shape = under_cursor.begin();
+					for(; *shape != last_s; ++shape) {}
+					for(++shape; shape != under_cursor.end(); ++shape) {
+						if(((*shape)->color_count != 0) == (last_s->color_count != 0)) {
+							state.s = *shape;
+							break;
+						}
+					}
+					if(shape == under_cursor.end()) {
+						for(auto shape = under_cursor.begin(); shape != under_cursor.end(); ++shape) {
+							if(((*shape)->color_count != 0) != (last_s->color_count != 0)) {
+								state.s = *shape;
+								break;
+							}
+						}
+					}
+				}
 				// TODO: make a setting
 				//if(state.s == last_s) state.s = NULL;
 				repaint(true);
@@ -485,7 +516,7 @@ void mouse_move(int x, int y) {
 		case Actions::MovingPointUnMerge:
 			{
 				if(state.p->use_count > 1) {
-					if(pow(state.p_last.x-state.p->x, 2)+pow(state.p_last.y-state.p->y, 2) > pow((8.0/w)*cmax, 2)+pow((8.0/h)*cmax, 2)) {
+					if(pow(state.p_last.x-state.p->x, 2)+pow(state.p_last.y-state.p->y, 2) > pow((8.0/w)*cmax/state.zoom, 2)+pow((8.0/h)*cmax/state.zoom, 2)) {
 						point **p1 = NULL, **p2 = NULL;
 						bezier* p2_b = NULL;
 						QuadTree<bezier>::Region region;
@@ -543,7 +574,7 @@ void mouse_move(int x, int y) {
 						for(point* p = region.next(false); p != NULL; p = region.next(false)) {
 							if(p == state.p) continue;
 							double dist2 = pow(p->x-state.p->x, 2)+pow(p->y-state.p->y, 2);
-							if(p->visible && dist2 < pow((8.0/w)*cmax, 2)+pow((8.0/h)*cmax, 2)) {
+							if(p->visible && dist2 < pow((8.0/w)*cmax/state.zoom, 2)+pow((8.0/h)*cmax/state.zoom, 2)) {
 								close.push_back({p, dist2});
 							}
 						}

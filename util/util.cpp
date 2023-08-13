@@ -8,13 +8,13 @@ bool line_right(const point& p, const point& a, const point& b) {
 }
 
 // https://stackoverflow.com/questions/7348009/y-coordinate-for-a-given-x-cubic-bezier#comment41435696_17546429
-#define crt(n) ((n < 0) ? -pow(-n, 1.0/3) : pow(n, 1.0/3))
+#define crt(n) ((n < 0) ? -pow(-(n), 1.0/3.0) : pow(n, 1.0/3.0))
 int bezier_crosses(const point& pnt, const bezier& bez) {
 	double a1 = bez.a1->y-pnt.y, h1 = bez.h1->y-pnt.y, a2 = bez.a2->y-pnt.y, h2 = bez.h2->y-pnt.y;
 	// get parametric (t^3 + at^2 + bt + c) form
 	double d = -a1+3*h1-3*h2+a2, a = (3*a1-6*h1+3*h2)/d, b = (-3*a1+3*h1)/d, c = a1/d;
-	double p = (3*b - a*a)/3;
-	double q = (2*a*a*a - 9*a*b + 27*c)/27, q2 = q/2;
+	double p = (3*b-a*a)/3;
+	double q = (2*a*a*a-9*a*b+27*c)/27, q2 = q/2;
 	double discriminant = pow(q2, 2)+pow(p/3, 3);
 	double x[3];
 	int sols = 0;
@@ -43,8 +43,7 @@ int bezier_crosses(const point& pnt, const bezier& bez) {
 	for(int i = sols-1; i >= 0; i--) {
 		double t = x[i];
 		point p = bez[x[i]];
-		// p comparisons fix horizontal lines at anchor intersections
-		if(t <= 0 || t >= 1) {
+		if(t < 0 || t > 1) {
 			x[i] = x[sols-1];
 			sols--;
 		}
