@@ -8,7 +8,12 @@
 
 extern QOpenGLWidget* canvas;
 
+QSpinBox* ratio_width;
+QSpinBox* ratio_height;
 SettingsWindow::SettingsWindow(QWidget* parent) : QWidget(parent) {
+	::ratio_width = &ratio_width;
+	::ratio_height = &ratio_height;
+
 	setWindowFlags(Qt::Tool);
 
 	hbox.addLayout(&left_vbox);
@@ -85,6 +90,12 @@ void SettingsWindow::applyAspectRatioEvent() {
 	// TODO: add tools to scale/move everything
 	settings.ratio_width = ratio_width.text().toInt();
 	settings.ratio_height = ratio_height.text().toInt();
+	// trigger resize event
+	canvas->setMaximumSize(1, 1);
+}
+void load_aspect_ratio() {
+	ratio_width->setValue(settings.ratio_width);
+	ratio_height->setValue(settings.ratio_height);
 	// trigger resize event
 	canvas->setMaximumSize(1, 1);
 }

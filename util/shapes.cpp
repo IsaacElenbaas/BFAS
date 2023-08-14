@@ -8,15 +8,13 @@
 #include "resource.h"
 #include "shapes.h"
 #include "state.h"
-// TODO: remove
-#include <iostream>
 
 extern QuadTree<point> point_QT;
 extern QuadTree<bezier> bezier_QT;
 
 std::unordered_map<decltype(Shape::shape)*, Shape*, ShapeHasher, ShapeComparator> shapes;
 static std::forward_list<decltype(Shape::shape)> add_shapes;
-std::forward_list<OpenGLShapeCollection*> shape_collections;
+std::vector<OpenGLShapeCollection*> shape_collections;
 Resource<Shape> shape_RS;
 
 void Shape::add(decltype(Shape::shape) shape) { add_shapes.push_front(shape); }
@@ -75,7 +73,7 @@ void Shape::apply_adds() {
 				adding_shapes[i]->shape_data.clear();
 				adding_shapes[i]->shape.clear();
 				adding_shapes[i]->_add(*(std::next(before_best)));
-				// first collection (new one) will see stale == false, second (old one) will see stale == true and remove it
+				// first instance in collection (new one) will see stale == false, second (old one) will see stale == true and remove it
 				adding_shapes[i]->stale = false;
 				add_shapes.erase_after(before_best);
 				if(new_state_s == NULL || state.s == adding_shapes[i])
@@ -96,14 +94,16 @@ void Shape::apply_adds() {
 			}
 			new_shape->colors.clear();
 			new_shape->color_count = 0;
+			new_shape->depth = 0;
 			new_shape->_add(*shape);
-			// first collection (new one) will see stale == false, second (old one) will see stale == true and remove it
+			// first instance in collection (new one) will see stale == false, second (old one) will see stale == true and remove it
 			new_shape->stale = false;
 			if(state.s == NULL)
 				state.s = new_shape;
 		}
 		add_shapes.clear();
 	}
+	std::sort(shape_collections.begin(), shape_collections.end(), OpenGLShapeCollectionComparator());
 	{
 		QuadTree<point>::Region region = point_QT.region(state.tl, state.br);
 		for(point* p = region.next(false); p != NULL; p = region.next(false)) {
@@ -123,6 +123,7 @@ void Shape::apply_adds() {
 void Shape::_add(decltype(Shape::shape) shape) {
 	beziers.clear();
 	update = true;
+	depth_update = false;
 	// need to copy data because moving a point would change the hash of the old shape and we can't find it anymore
 	// or, worse, the hash *doesn't* change and because the data is equal (pointers to same things) the old entry is overwritten but its being stale not handled
 	auto last_data = shape_data.before_begin();
@@ -141,38 +142,55 @@ void Shape::_add(decltype(Shape::shape) shape) {
 		last = this->shape.insert_after(last, {last_data, std::get<1>(*i), std::get<2>(*i)});
 		beziers.insert({b, true});
 	}
-	depth = 0;
 	shapes.insert({&this->shape, this});
-	OpenGLShapeCollection* collection = shape_collections.front();
+	auto collection = std::lower_bound(
+		shape_collections.begin(), shape_collections.end(),
+		depth, [](OpenGLShapeCollection* const& collection, size_t depth) {
+			if(collection->used == 0) return false;
+			return collection->depth > depth;
+		}
+	);
+	if(collection == shape_collections.end()) collection = --shape_collections.end();
 	size = distance(shape.begin(), shape.end());
-	if(size > collection->capacity-collection->used) {
-		if(collection->used != 0) {
-			shape_collections.push_front(new OpenGLShapeCollection());
-			collection = shape_collections.front();
+	while(
+		size > (*collection)->capacity-(*collection)->used &&
+		std::next(collection) != shape_collections.end() &&
+		(*std::next(collection))->depth == depth
+	)
+		++collection;
+	if((*collection)->depth != depth || size > (*collection)->capacity-(*collection)->used) {
+		if((*collection)->used != 0) {
+			collection = --shape_collections.end();
+			if((*collection)->used != 0) {
+				shape_collections.push_back(new OpenGLShapeCollection());
+				collection = --shape_collections.end();
+			}
 		}
-		if(size > collection->capacity-collection->used) {
-			delete[] static_cast<GLfloat*>(collection->data);
-			collection->capacity = size;
-			collection->data = new GLfloat[6*(3+2)*collection->capacity];
+		if(size > (*collection)->capacity-(*collection)->used) {
+			delete[] static_cast<GLfloat*>((*collection)->data);
+			(*collection)->capacity = size;
+			(*collection)->data = new GLfloat[6*(2+2)*(*collection)->capacity];
 			QOpenGLFunctions* f = QOpenGLContext::currentContext()->functions();
-			f->glBindBuffer(GL_ARRAY_BUFFER, collection->vbos[0]);
-			f->glBufferData(GL_ARRAY_BUFFER, collection->capacity*6*3*sizeof(GLfloat), NULL, GL_DYNAMIC_DRAW);
-			f->glBindBuffer(GL_ARRAY_BUFFER, collection->vbos[1]);
-			f->glBufferData(GL_ARRAY_BUFFER, collection->capacity*6*2*sizeof(GLfloat), NULL, GL_DYNAMIC_DRAW);
+			f->glBindBuffer(GL_ARRAY_BUFFER, (*collection)->vbos[0]);
+			f->glBufferData(GL_ARRAY_BUFFER, (*collection)->capacity*6*2*sizeof(GLfloat), NULL, GL_DYNAMIC_DRAW);
+			f->glBindBuffer(GL_ARRAY_BUFFER, (*collection)->vbos[1]);
+			f->glBufferData(GL_ARRAY_BUFFER, (*collection)->capacity*6*2*sizeof(GLfloat), NULL, GL_DYNAMIC_DRAW);
 		}
+		(*collection)->depth = depth;
 	}
-	collection->shapes.push_front(this);
-	collection->used += size;
+	(*collection)->shapes.push_back(this);
+	this->collection = *collection;
+	(*collection)->used += size;
 }
 
 OpenGLShapeCollection::OpenGLShapeCollection() {
-	data = new GLfloat[6*(3+2)*capacity];
+	data = new GLfloat[6*(2+2)*capacity];
 	QOpenGLFunctions* f = QOpenGLContext::currentContext()->functions();
 	GLuint vbos[3];
 	f->glGenBuffers(3, vbos);
 	this->vbos[0] = vbos[0];
 	f->glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
-	f->glBufferData(GL_ARRAY_BUFFER, capacity*6*3*sizeof(GLfloat), NULL, GL_DYNAMIC_DRAW);
+	f->glBufferData(GL_ARRAY_BUFFER, capacity*6*2*sizeof(GLfloat), NULL, GL_DYNAMIC_DRAW);
 	this->vbos[1] = vbos[1];
 	f->glBindBuffer(GL_ARRAY_BUFFER, vbos[1]);
 	f->glBufferData(GL_ARRAY_BUFFER, capacity*6*2*sizeof(GLfloat), NULL, GL_DYNAMIC_DRAW);
@@ -191,7 +209,7 @@ void OpenGLShapeCollection::draw() {
 	std::vector<GLfloat> bezier_data;
 	size_t index = 0;
 	for(auto i = shapes.rbegin(); i != shapes.rend(); ) {
-		if((*i)->stale) {
+		if((*i)->stale || (*i)->collection != this) {
 			// TODO: not cleaning these up - should probably happen in pack though
 			// TODO: leave one empty one
 			used -= (*i)->size;
@@ -218,18 +236,18 @@ void OpenGLShapeCollection::draw() {
 	QOpenGLFunctions* f = QOpenGLContext::currentContext()->functions();
 	if(update) {
 		GLfloat* p = &((GLfloat*)data)[0];
-		GLfloat* b = &((GLfloat*)data)[6*3*index];
+		GLfloat* b = &((GLfloat*)data)[6*2*index];
 		size_t p_i = 0, b_i = 0;
 		size_t bezier_index = 0;
 		index = 0;
 		for(auto i = shapes.rbegin(); i != shapes.rend(); ++i) {
 			if(index >= update_index) {
-				p[p_i+ 0] = (*i)->tl.x/(double)cmax; p[p_i+ 1] = (*i)->tl.y/(double)cmax; p[p_i+ 2] = (*i)->depth;
-				p[p_i+ 3] = (*i)->br.x/(double)cmax; p[p_i+ 4] = (*i)->tl.y/(double)cmax; p[p_i+ 5] = (*i)->depth;
-				p[p_i+ 6] = (*i)->tl.x/(double)cmax; p[p_i+ 7] = (*i)->br.y/(double)cmax; p[p_i+ 8] = (*i)->depth;
-				p[p_i+ 9] = (*i)->tl.x/(double)cmax; p[p_i+10] = (*i)->br.y/(double)cmax; p[p_i+11] = (*i)->depth;
-				p[p_i+12] = (*i)->br.x/(double)cmax; p[p_i+13] = (*i)->br.y/(double)cmax; p[p_i+14] = (*i)->depth;
-				p[p_i+15] = (*i)->br.x/(double)cmax; p[p_i+16] = (*i)->tl.y/(double)cmax; p[p_i+17] = (*i)->depth;
+				p[p_i+ 0] = (*i)->tl.x/(double)cmax; p[p_i+ 1] = (*i)->tl.y/(double)cmax;
+				p[p_i+ 2] = (*i)->br.x/(double)cmax; p[p_i+ 3] = (*i)->tl.y/(double)cmax;
+				p[p_i+ 4] = (*i)->tl.x/(double)cmax; p[p_i+ 5] = (*i)->br.y/(double)cmax;
+				p[p_i+ 6] = (*i)->tl.x/(double)cmax; p[p_i+ 7] = (*i)->br.y/(double)cmax;
+				p[p_i+ 8] = (*i)->br.x/(double)cmax; p[p_i+ 9] = (*i)->br.y/(double)cmax;
+				p[p_i+10] = (*i)->br.x/(double)cmax; p[p_i+11] = (*i)->tl.y/(double)cmax;
 				b[b_i+ 0] = (*i)->size; b[b_i+ 1] = bezier_index;
 				b[b_i+ 2] = (*i)->size; b[b_i+ 3] = bezier_index;
 				b[b_i+ 4] = (*i)->size; b[b_i+ 5] = bezier_index;
@@ -237,7 +255,7 @@ void OpenGLShapeCollection::draw() {
 				b[b_i+ 8] = (*i)->size; b[b_i+ 9] = bezier_index;
 				b[b_i+10] = (*i)->size; b[b_i+11] = bezier_index;
 			}
-			p_i += 6*3;
+			p_i += 6*2;
 			b_i += 6*2;
 			bezier_index += (*i)->size;
 			for(auto j = (*i)->shape.begin(); j != (*i)->shape.end(); ++j) {
@@ -253,7 +271,7 @@ void OpenGLShapeCollection::draw() {
 		}
 		// coordinates and bezier info
 		f->glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
-		f->glBufferSubData(GL_ARRAY_BUFFER, update_index*6*3*sizeof(GLfloat), (index-update_index)*6*3*sizeof(GLfloat), &p[update_index*6*3]);
+		f->glBufferSubData(GL_ARRAY_BUFFER, update_index*6*2*sizeof(GLfloat), (index-update_index)*6*2*sizeof(GLfloat), &p[update_index*6*2]);
 		f->glBindBuffer(GL_ARRAY_BUFFER, vbos[1]);
 		f->glBufferSubData(GL_ARRAY_BUFFER, update_index*6*2*sizeof(GLfloat), (index-update_index)*6*2*sizeof(GLfloat), &b[update_index*6*2]);
 		// bezier SSBO
@@ -296,7 +314,7 @@ void OpenGLShapeCollection::draw() {
 	// coordinates and bezier info
 	f->glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
 	f->glEnableVertexAttribArray(0);
-	f->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+	f->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
 	f->glBindBuffer(GL_ARRAY_BUFFER, vbos[1]);
 	f->glEnableVertexAttribArray(1);
 	f->glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, NULL);
@@ -351,4 +369,12 @@ bool ShapeComparator::operator()(decltype(Shape::shape)* const& a, decltype(Shap
 	}
 	if(j != b->end()) return false;
 	return true;
+}
+
+bool OpenGLShapeCollectionComparator::operator()(OpenGLShapeCollection* const& a, OpenGLShapeCollection* const& b) const {
+	if(a == NULL || a->used == 0) return false;
+	if(b == NULL || b->used == 0) return true;
+	if(a->depth > b->depth) return true;
+	if(b->depth > a->depth) return false;
+	return false;
 }

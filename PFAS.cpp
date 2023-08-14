@@ -31,6 +31,8 @@ constexpr T hton(T value) noexcept {
 // TODO: everything else should include UI.h
 #include "UI.cpp"
 
+extern void load_aspect_ratio();
+
 // for temporary beziers to point to
 point t_a1, t_h1, t_a2, t_h2;
 
@@ -269,7 +271,7 @@ void detect_shapes() {
 				if(before_min != normalized_shape.before_begin())
 					normalized_shape.splice_after(normalized_shape.before_begin(), normalized_shape, before_min, normalized_shape.end());
 				auto shape_place = shapes.find(&normalized_shape);
-				if(shape_place != shapes.end())
+				if(shape_place != shapes.end() && !(*shape_place).second->depth_update)
 					(*shape_place).second->stale = false;
 				else
 					Shape::add(normalized_shape);
@@ -499,6 +501,23 @@ void key_release(int key) {
 					}
 				}*/
 			}
+			break;
+		// TODO: make these inc/dec depth just past the next bezier in the region made by its TL and BR
+		case 'E':
+			if(state.s == NULL) break;
+			if(state.s->depth == 0) {
+				for(auto shape = shapes.begin(); shape != shapes.end(); ++shape) { (*shape).second->depth++; }
+				for(auto shape_collection = shape_collections.begin(); shape_collection != shape_collections.end(); ++shape_collection) { (*shape_collection)->depth++; }
+			}
+			state.s->depth--;
+			state.s->depth_update = true;
+			repaint(true);
+			break;
+		case 'R':
+			if(state.s == NULL) break;
+			state.s->depth++;
+			state.s->depth_update = true;
+			repaint(true);
 			break;
 		//case 16777216:
 		//	(*a).quit();
@@ -796,7 +815,7 @@ void save(const char* const path) {
 	});
 	for(auto shape = shapes.begin(); shape != shapes.end(); ++shape) {
 		if((*shape)->shape.empty()) break;
-		file << "color coords:" << sizeof(ctype) << std::endl;
+		file << "color coords:" << (*shape)->depth << "," << sizeof(ctype) << std::endl;
 		file.seekp(-1, std::ios_base::cur);
 		for(auto p = (*shape)->color_coords.begin(); p != (*shape)->color_coords.end(); ++p) {
 			ctype x = hton((*p)->x); ctype y = hton((*p)->y);
@@ -1022,8 +1041,9 @@ void load(const char* const path) {
 					rewind_past(&file, buffer, buffer_end, pipe-1);
 					unsigned int length;
 					char length_buffer[sizeof(size_t)];
-					if(sscanf(buffer, "%u", &length) != 1)
+					if(sscanf(buffer, "%zu,%u", &((*shape)->depth), &length) != 2)
 						return;
+					(*shape)->depth_update = true;
 					long double length_cmax = (((size_t)1) << (8*length-1))-1;
 					while(true) {
 						file.read(buffer, buffer_size);
@@ -1081,10 +1101,6 @@ void load(const char* const path) {
 		}
 	}
 	::state.s = NULL;
-	// TODO: resize canvas - may not need to trigger a resize then
+	load_aspect_ratio();
 	repaint(true);
-}
-
-void render(const char* const path) {
-	// TODO: probably needs to happen in main.cpp actually
 }

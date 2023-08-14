@@ -1,6 +1,9 @@
 #include <QApplication>
+#include <QOpenGLFramebufferObject>
 #include <QOpenGLFunctions>
 #include <QOpenGLShaderProgram>
+#include <cstring>
+#include <stdlib.h>
 #include "color_picker.h"
 #include "main.h"
 #include "settings.h"
@@ -36,12 +39,27 @@ void Canvas::initializeGL() {
 	u_zoom = program->uniformLocation("u_zoom");
 	u_tl = program->uniformLocation("u_tl");
 	context()->functions()->initializeOpenGLFunctions();
-	shape_collections.push_front(new OpenGLShapeCollection());
+	shape_collections.push_back(new OpenGLShapeCollection());
 	program->release();
 	// TODO: glDeleteBuffers in deconstructors
 }
 
+static char* render_path = NULL;
+void render(const char* const path) {
+	render_path = (char*)malloc((strlen(path)+1)*sizeof(char));
+	strcpy(render_path, path);
+	canvas->update();
+}
+
 void Canvas::paintGL() {
+	GLint old_fbo;
+	QOpenGLFramebufferObject* fbo = NULL;
+	if(render_path != NULL) {
+		context()->functions()->glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
+		fbo = new QOpenGLFramebufferObject(8*settings.ratio_width, 8*settings.ratio_height);
+		fbo->bind();
+		glViewport(0, 0, 8*settings.ratio_width, 8*settings.ratio_height);
+	}
 	program->bind();
 	QOpenGLFunctions* f = context()->functions();
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -54,7 +72,21 @@ void Canvas::paintGL() {
 	program->setUniformValue(u_tl, (GLfloat)(state.tl.x/(double)cmax), (GLfloat)(state.tl.y/(double)cmax));
 	detect_shapes();
 	Shape::apply_adds();
-	for(auto i = shape_collections.begin(); i != shape_collections.end(); ++i) { (*i)->draw(); }
+	for(auto i = shape_collections.begin(); i != shape_collections.end(); ++i) {
+		if((*i)->used == 0) break;
+		(*i)->draw();
+	}
+	if(render_path != NULL) {
+		fbo->toImage().scaled(settings.ratio_width, settings.ratio_height, Qt::KeepAspectRatio, Qt::SmoothTransformation).save(render_path);
+		fbo->release();
+		fbo = NULL;
+		f->glBindFramebuffer(GL_FRAMEBUFFER, old_fbo);
+		glViewport(0, 0, contentsRect().width(), contentsRect().height());
+		free(render_path); render_path = NULL;
+		update();
+		program->release();
+		return;
+	}
 	// unbind vertex buffer, required for painter to still work
 	// do in initialize, maybe here too
 	f->glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -69,7 +101,7 @@ void Canvas::paintGL() {
 	painter->end();
 	if(repaint_later) {
 		repaint_later = false;
-		canvas->repaint();
+		repaint();
 	}
 }
 
@@ -117,7 +149,6 @@ void Canvas::resizeGL(int w, int h) {
 		zoom(0);
 	}
 }
-
 
 int main(int argc, char* argv[]) {
 	QApplication app(argc, argv);

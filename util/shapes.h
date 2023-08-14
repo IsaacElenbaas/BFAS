@@ -11,20 +11,22 @@
 // TODO: change to 60 after testing
 #define SHAPE_COLLECTION_BEZIERS 6
 
-// TODO: PFAS.cpp checks the map, unstales or calls add
+class OpenGLShapeCollection;
+
 class Shape {
 public:
 	std::forward_list<std::tuple<decltype(point().used_by.begin()), bool, decltype(point().used_by.end())>> shape;
 private:
 	std::forward_list<bezier*> shape_data;
 	bool update;
+	OpenGLShapeCollection* collection;
 	void _add(decltype(Shape::shape) shape);
 public:
 	bool stale;
-	bool fresh;
 	size_t size;
 	point tl, br;
 	size_t depth;
+	bool depth_update = false;
 	std::unordered_map<bezier*, bool> beziers;
 	std::forward_list<point*> color_coords;
 	std::forward_list<double> colors;
@@ -41,10 +43,12 @@ class OpenGLShapeCollection {
 	unsigned long vbos[3];
 	unsigned long ssbos[2];
 	void* data;
-	size_t used = 0;
 	size_t capacity = SHAPE_COLLECTION_BEZIERS;
 	bool update = false;
 public:
+	size_t used = 0;
+	size_t depth = 0; // just to make valgrind happy
+	friend class OpenGLShapeCollectionComparator;
 	friend void Shape::_add(decltype(shape) shape);
 	OpenGLShapeCollection();
 	~OpenGLShapeCollection();
@@ -61,6 +65,11 @@ public:
 	bool operator()(decltype(Shape::shape)* const& a, decltype(Shape::shape)* const& b) const;
 };
 
+class OpenGLShapeCollectionComparator {
+public:
+	bool operator()(OpenGLShapeCollection* const& a, OpenGLShapeCollection* const& b) const;
+};
+
 extern std::unordered_map<decltype(Shape::shape)*, Shape*, ShapeHasher, ShapeComparator> shapes;
-extern std::forward_list<OpenGLShapeCollection*> shape_collections;
+extern std::vector<OpenGLShapeCollection*> shape_collections;
 #endif
