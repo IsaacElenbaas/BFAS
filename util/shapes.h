@@ -8,8 +8,7 @@
 #include "../types.h"
 
 // should be a highly composite number
-// TODO: change to 60 after testing
-#define SHAPE_COLLECTION_BEZIERS 6
+#define SHAPE_COLLECTION_BEZIERS 60
 
 class OpenGLShapeCollection;
 

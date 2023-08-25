@@ -251,10 +251,11 @@ void detect_shapes() {
 					(*std::get<0>(*i))->used = true;
 				}
 				// put upper-leftmost bezier first before storing, try to account for different first shape discovery points
+				// TODO: doesn't account for direction, so shapes being found from a different (reversed) bezier doesn't find any shapes and then rematches them all
 				decltype(shape) normalized_shape = shape;
 				bezier* min = *std::get<0>(normalized_shape.front());
 				auto before_min = normalized_shape.before_begin();
-				// TODO: this will break if the upper-leftmost point is used by two beziers
+				// TODO: this will break if the upper-leftmost point is used by two beziers in the shape and rematch the shape
 				// TODO: improve - pretty common state
 				for(auto i = ++normalized_shape.begin(), before_i = normalized_shape.begin(); i != normalized_shape.end(); before_i = i++) {
 					if(

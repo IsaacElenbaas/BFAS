@@ -45,8 +45,8 @@ void main() {
 	if((crosses & 1) != 1)
 		discard;
 	for(int i = 0; i < 3*int(color_data[0]); i += 3) {
-		if(length(position-colors[int(color_data[1])+i]) < 0.001/u_zoom) {
-			fragColor = vec4(colors[int(color_data[1])+i+1], colors[int(color_data[1])+i+2]);
+		if(length(position-colors[3*int(color_data[1])+i]) < 0.001/u_zoom) {
+			fragColor = vec4(colors[3*int(color_data[1])+i+1], colors[3*int(color_data[1])+i+2]);
 			return;
 		}
 	}
@@ -54,7 +54,7 @@ void main() {
 	// +1 to not have to modulo all the time in outside-hull checking
 	int c_s[MAX_COLORS+1];
 	int color_count = min(MAX_COLORS, int(color_data[0]));
-	for(int i = 0; i < color_count; ++i) { c_s[i] = int(color_data[1])+3*i; }
+	for(int i = 0; i < color_count; ++i) { c_s[i] = 3*(int(color_data[1])+i); }
 	// sort points by angle
 	for(int i = color_count-1; i >= 0; --i) {
 		for(int j = 0; j < i; ++j) {

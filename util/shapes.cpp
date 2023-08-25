@@ -20,8 +20,11 @@ Resource<Shape> shape_RS;
 void Shape::add(decltype(Shape::shape) shape) { add_shapes.push_front(shape); }
 void Shape::apply_adds() {
 	// try to match up shapes with their old objects to preserve colors and active shape between quick disconnections
-	size_t to_match = distance(add_shapes.begin(), add_shapes.end());
+	// even if this is still a bit buggy I should be able to say "clean up the shapes you don't plan to use again"
+	// TODO: add a way to delete all colors in a shape
+	size_t to_match = 0;
 	for(auto i = shapes.begin(); i != shapes.end(); ++i) { if((*i).second->stale) to_match++; }
+	to_match = std::max(to_match, (size_t)distance(add_shapes.begin(), add_shapes.end()));
 	if(to_match != 0) {
 		Shape* new_state_s = NULL;
 		Shape** adding_shapes = new Shape*[to_match];
@@ -34,28 +37,72 @@ void Shape::apply_adds() {
 		}
 		for( ; i < to_match; i++) {
 			adding_shapes[i] = shape_RS.get();
-			// no point in matching against fresh shapes
-			if(adding_shapes[i]->beziers.empty()) {
+			// no point in matching against fresh or uncolored shapes
+			if(adding_shapes[i]->beziers.empty() || adding_shapes[i]->color_count == 0) {
+				if(adding_shapes[i]->color_count == 0) {
+					shapes.erase(&adding_shapes[i]->shape);
+					for(auto j = adding_shapes[i]->shape_data.begin(); j != adding_shapes[i]->shape_data.end(); ++j) { (**j).release(); }
+					adding_shapes[i]->shape_data.clear();
+					adding_shapes[i]->shape.clear();
+				}
 				shape_RS.release(adding_shapes[i]);
+				adding_shapes[i] = adding_shapes[to_match-1];
 				i--; to_match--;
+			}
+		}
+		// match those that were not found but are unchanged first
+		// this only helps because of the TODOs in detect_shapes
+		for(size_t i = 0; i < to_match; i++) {
+			auto before_best = add_shapes.before_begin();
+			bool matched = false;
+			for(auto shape = add_shapes.begin(), last = before_best; shape != add_shapes.end(); last = shape++) {
+				matched = true;
+				for(auto j = (*shape).begin(); j != (*shape).end(); ++j) {
+					if(adding_shapes[i]->beziers.find(*std::get<0>(*j)) == adding_shapes[i]->beziers.end()) {
+						matched = false;
+						break;
+					}
+				}
+				before_best = last;
+				if(matched) break;
+			}
+			if(matched) {
+				shapes.erase(&adding_shapes[i]->shape);
+				for(auto k = adding_shapes[i]->shape_data.begin(); k != adding_shapes[i]->shape_data.end(); ++k) { (**k).release(); }
+				adding_shapes[i]->shape_data.clear();
+				adding_shapes[i]->shape.clear();
+				adding_shapes[i]->_add(*(std::next(before_best)));
+				// first instance in collection (new one) will see stale == false, second (old one) will see stale == true and remove it
+				adding_shapes[i]->stale = false;
+				add_shapes.erase_after(before_best);
+				if(new_state_s == NULL || state.s == adding_shapes[i])
+					new_state_s = adding_shapes[i];
+				to_match--;
+				for(size_t j = i; j+1 <= to_match; j++) {
+					adding_shapes[j] = adding_shapes[j+1];
+				}
+				i--;
 			}
 		}
 		// checking in this order should be most recently released first
 		for(size_t i = 0; i < to_match; i++) {
 			auto before_best = add_shapes.before_begin();
-			size_t best_count = 0;
+			double best_similarity = 0;
 			for(auto shape = add_shapes.begin(), last = before_best; shape != add_shapes.end(); last = shape++) {
-				size_t count = 0;
+				double similarity = 0;
+				double count = 0;
 				for(auto j = (*shape).begin(); j != (*shape).end(); ++j) {
 					if(adding_shapes[i]->beziers.find(*std::get<0>(*j)) != adding_shapes[i]->beziers.end())
-						count++;
+						similarity++;
+					count++;
 				}
-				if(count > best_count) {
+				similarity /= count;
+				if(similarity > best_similarity) {
 					before_best = last;
-					best_count = count;
+					best_similarity = similarity;
 				}
 			}
-			if(best_count == 0) {
+			if(best_similarity == 0) {
 				if(adding_shapes[i]->shape.empty())
 					shape_RS.release(adding_shapes[i]);
 				// collection needs to see it is stale and remove it
@@ -179,8 +226,8 @@ void Shape::_add(decltype(Shape::shape) shape) {
 		(*collection)->depth = depth;
 	}
 	(*collection)->shapes.push_back(this);
-	this->collection = *collection;
 	(*collection)->used += size;
+	this->collection = *collection;
 }
 
 OpenGLShapeCollection::OpenGLShapeCollection() {
@@ -213,6 +260,7 @@ void OpenGLShapeCollection::draw() {
 			// TODO: not cleaning these up - should probably happen in pack though
 			// TODO: leave one empty one
 			used -= (*i)->size;
+			// shape was actually removed, didn't just have depth change or something
 			if((*i)->shape.empty()) shape_RS.release(*i);
 			update = true;
 			update_index = std::min(index, update_index);
@@ -302,7 +350,7 @@ void OpenGLShapeCollection::draw() {
 				color_data.insert(color_data.end(), *k); ++k;
 			}
 			c_i += 6*2;
-			color_index += (*i)->size;
+			color_index += (*i)->color_count;
 		}
 		// color info
 		f->glBindBuffer(GL_ARRAY_BUFFER, vbos[2]);
