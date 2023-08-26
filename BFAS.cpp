@@ -376,15 +376,23 @@ void key_release(int key) {
 						if(use_count > 2) break;
 					}
 				}
+				// TODO: check remove_p's use_count afterwards and possibly remove from point QT and release?
+				// TODO: maybe already is / should be done in bezier release for >=1 though
 				if(use_count > 2) break;
-				if(use_count == 1) {
+				if(use_count == 0) {
+					for(auto b = remove_p->used_by.begin(); b != remove_p->used_by.end(); ++b) {
+						if((*b)->h1 == remove_p) { remove_p->remove_from(*b); (*b)->h1 = (*b)->a1; (*b)->a1->add_to(*b); }
+						if((*b)->h2 == remove_p) { remove_p->remove_from(*b); (*b)->h2 = (*b)->a2; (*b)->a2->add_to(*b); }
+					}
+				}
+				else if(use_count == 1) {
 					bezier* b = remove_p->used_by.front();
 					bezier_QT.remove(b);
 					(*b).release();
 				}
 				else {
 					bezier* b = remove_p->used_by.front();
-					bezier* b2 = *(++remove_p->used_by.begin());
+					bezier* b2 = *(++(remove_p->used_by.begin()));
 					point** a2;
 					point** h2;
 					if(remove_p == b->a2) { a2 = &b->a2; h2 = &b->h2; } else { a2 = &b->a1; h2 = &b->h1; }

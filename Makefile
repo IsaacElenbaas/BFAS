@@ -25,12 +25,7 @@ BFAS: UI/Makefile UI/main.cpp UI/main.h shape.vert shape.frag $(wildcard ./*.gls
       UI/settings_UI.cpp UI/settings_UI.h settings.h \
       util/shapes.h UI/BFAS.o $(UTILS)
 	$(MAKE) -C UI
-ifneq (,$(wildcard ./UI/UI))
-	mv UI/UI BFAS
-else
-	mv UI/release/UI.exe /src/BFAS.exe
-	@touch BFAS
-endif
+	@mv UI/UI BFAS 2>/dev/null || { mv UI/release/UI.exe /src/BFAS.exe; touch BFAS; }
 UI/BFAS.o: BFAS.cpp $(wildcard ./*.h) $(wildcard ./util/*.h) UI/UI.cpp settings.h
 	$(CC) $(CFLAGS) $(INC_PATH) -c -o $@ $< $(LIB_PATH) $(QT_INC_PATH) $(LIBS)
 util/resource.o: util/resource.cpp util/resource.h types.h util/shapes.h
