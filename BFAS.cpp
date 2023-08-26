@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include "PFAS.h"
+#include "BFAS.h"
 #include "quadtree.h"
 #include "resource.h"
 #include "settings.h"
@@ -524,7 +524,6 @@ void key_release(int key) {
 		//	(*a).quit();
 		//	break;
 	}
-	std::cout << key << std::endl;
 }
 
 void mouse_move(int x, int y) {
@@ -742,7 +741,7 @@ void mouse_double_click(bool left, int x, int y) {
 }
 
 void save(const char* const path) {
-	std::ofstream file(path, std::ios::binary);
+	std::ofstream file(path, std::ios_base::binary);
 	if(!file.is_open()) return;
 	// TODO: make sure to account for ctype possibly being bigger in the file than on this machine when reading
 	std::unordered_map<point*, size_t> points;
@@ -838,7 +837,7 @@ void save(const char* const path) {
 }
 
 void load(const char* const path) {
-	std::ifstream file(path, std::ios::binary);
+	std::ifstream file(path, std::ios_base::binary);
 	if(!file.is_open()) return;
 	enum ReadState {
 		READ_BASE,
@@ -859,11 +858,12 @@ void load(const char* const path) {
 		const char* const buffer_end,
 		const char* const buffer_pointer
 	) {
+		// casts are necessary on Windows
 		if(*file)
-			(*file).seekg(-(buffer_end-buffer_pointer)/sizeof(char)+1, std::ios_base::cur);
+			(*file).seekg(-(buffer_end-buffer_pointer)/(ssize_t)sizeof(char)+1, std::ios_base::cur);
 		else {
 			(*file).clear();
-			(*file).seekg(-((*file).gcount()-(buffer_pointer-buffer)/sizeof(char))+1, std::ios_base::cur);
+			(*file).seekg(-((*file).gcount()-(buffer_pointer-buffer)/(ssize_t)sizeof(char))+1, std::ios_base::cur);
 		}
 	};
 	std::unordered_map<size_t, point*> points;
@@ -879,7 +879,7 @@ void load(const char* const path) {
 					file.read(buffer, buffer_size);
 					if(file.gcount() == 0 && file.eof()) { done = true; break; }
 					char* colon = std::find(buffer, buffer_end, ':');
-					if(colon == buffer_end || *colon != ':') return;
+					if(colon == buffer_end) return;
 					*colon = '\0';
 					rewind_past(&file, buffer, buffer_end, colon);
 					     if(strcmp(buffer, "resolution"  ) == 0) state = READ_RESOLUTION;
@@ -911,7 +911,7 @@ void load(const char* const path) {
 				{
 					file.read(buffer, buffer_size);
 					char* pipe = std::find(buffer, buffer_end, '|');
-					if(pipe == buffer_end || *pipe != '|') return;
+					if(pipe == buffer_end) return;
 					*pipe = '\0';
 					rewind_past(&file, buffer, buffer_end, pipe-1);
 					unsigned int length;
@@ -953,7 +953,7 @@ void load(const char* const path) {
 				{
 					file.read(buffer, buffer_size);
 					char* pipe = std::find(buffer, buffer_end, '|');
-					if(pipe == buffer_end || *pipe != '|') return;
+					if(pipe == buffer_end) return;
 					*pipe = '\0';
 					rewind_past(&file, buffer, buffer_end, pipe-1);
 					unsigned int length;
@@ -1037,7 +1037,7 @@ void load(const char* const path) {
 						state = READ_BASE;
 						break;
 					}
-					if(pipe == buffer_end || *pipe != '|') return;
+					if(pipe == buffer_end) return;
 					*pipe = '\0';
 					rewind_past(&file, buffer, buffer_end, pipe-1);
 					unsigned int length;

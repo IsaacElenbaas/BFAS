@@ -52,19 +52,19 @@ void render(const char* const path) {
 }
 
 void Canvas::paintGL() {
+	QOpenGLFunctions* f = context()->functions();
 	GLint old_fbo;
 	QOpenGLFramebufferObject* fbo = NULL;
 	if(render_path != NULL) {
 		context()->functions()->glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
 		fbo = new QOpenGLFramebufferObject(8*settings.ratio_width, 8*settings.ratio_height);
 		fbo->bind();
-		glViewport(0, 0, 8*settings.ratio_width, 8*settings.ratio_height);
+		f->glViewport(0, 0, 8*settings.ratio_width, 8*settings.ratio_height);
 	}
 	program->bind();
-	QOpenGLFunctions* f = context()->functions();
-	glClear(GL_COLOR_BUFFER_BIT);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_BLEND);
+	f->glClear(GL_COLOR_BUFFER_BIT);
+	f->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	f->glEnable(GL_BLEND);
 	program->setUniformValue(u_enable_voronoi, settings.enable_voronoi);
 	program->setUniformValue(u_enable_influenced, settings.enable_influenced);
 	program->setUniformValue(u_enable_fireworks, settings.enable_fireworks);
@@ -81,7 +81,7 @@ void Canvas::paintGL() {
 		fbo->release();
 		fbo = NULL;
 		f->glBindFramebuffer(GL_FRAMEBUFFER, old_fbo);
-		glViewport(0, 0, contentsRect().width(), contentsRect().height());
+		f->glViewport(0, 0, contentsRect().width(), contentsRect().height());
 		free(render_path); render_path = NULL;
 		update();
 		program->release();
@@ -91,7 +91,7 @@ void Canvas::paintGL() {
 	// do in initialize, maybe here too
 	f->glBindBuffer(GL_ARRAY_BUFFER, 0);
 	{GLenum err;
-	while((err = glGetError()) != GL_NO_ERROR) {
+	while((err = f->glGetError()) != GL_NO_ERROR) {
 		std::cerr << "Error: " << err << std::endl;
 	}}
 	program->release();
@@ -152,7 +152,7 @@ void Canvas::resizeGL(int w, int h) {
 
 int main(int argc, char* argv[]) {
 	QApplication app(argc, argv);
-	QCoreApplication::setApplicationName("PFAS");
+	QCoreApplication::setApplicationName("BFAS");
 	QCoreApplication::setOrganizationName("Programmatic Flat Art Studio");
 
 	CanvasWindow window;

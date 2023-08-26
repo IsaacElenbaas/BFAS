@@ -376,7 +376,7 @@ void OpenGLShapeCollection::draw() {
 	// color SSBO
 	f->glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbos[1]);
 	QOpenGLContext::currentContext()->extraFunctions()->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbos[1]);
-	glDrawArrays(GL_TRIANGLES, 0, 6*index);
+	f->glDrawArrays(GL_TRIANGLES, 0, 6*index);
 }
 
 void OpenGLShapeCollection::pack(OpenGLShapeCollection* other) {

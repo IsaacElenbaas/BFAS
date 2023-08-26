@@ -1,0 +1,9 @@
+set -e
+cd /; git clone https://github.com/mxe/mxe.git
+cd mxe; make qtbase; cd ..
+PATH=":$PATH"
+PATH="${PATH//:\//":$PWD/mxe/"}$PATH"
+export PATH="${PATH#:}"
+mkdir /build; cd /build
+ln -s /src/* ./; make clean
+make CROSS=i686-w64-mingw32.static-

@@ -5,7 +5,7 @@
 #include <QOpenGLWidget>
 #include <QPaintEvent>
 #include <QPainter>
-#include "PFAS.h"
+#include "BFAS.h"
 
 extern QPainter* painter;
 extern QImage* pixels;

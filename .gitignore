@@ -1,5 +1,8 @@
-/PFAS
+/BFAS
+/BFAS.exe
 .*
 *.o
 /UI/moc_*
-/UI/Makefile
+/UI/Makefile*
+/UI/release
+/UI/ui_plugin_import.cpp

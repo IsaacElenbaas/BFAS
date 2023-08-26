@@ -102,7 +102,7 @@ void load_aspect_ratio() {
 
 extern void save(const char* const path);
 void SettingsWindow::saveEvent() {
-	QString path = QFileDialog::getSaveFileName(this, "Save", QDir::homePath(), "PFAS Files (*.pfas)");
+	QString path = QFileDialog::getSaveFileName(this, "Save", QDir::homePath(), "BFAS Files (*.pfas)");
 	if(path.isEmpty()) return;
 	if(!path.endsWith(".pfas", Qt::CaseInsensitive))
 		path += ".pfas";
@@ -110,7 +110,7 @@ void SettingsWindow::saveEvent() {
 }
 extern void load(const char* const path);
 void SettingsWindow::loadEvent() {
-	QString path = QFileDialog::getOpenFileName(this, "Load", QDir::homePath(), "PFAS Files (*.pfas)");
+	QString path = QFileDialog::getOpenFileName(this, "Load", QDir::homePath(), "BFAS Files (*.pfas)");
 	if(path.isEmpty()) return;
 	::load(path.toUtf8().constData());
 }

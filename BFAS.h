@@ -1,5 +1,5 @@
-#ifndef PFAS_H
-#define PFAS_H
+#ifndef BFAS_H
+#define BFAS_H
 extern int w, h;
 #include "state.h"
 #include "types.h"

@@ -2,7 +2,7 @@
 #include <QOpenGLFunctions>
 #include <QOpenGLShaderProgram>
 #include <cmath>
-#include "PFAS.h"
+#include "BFAS.h"
 #include "UI.h"
 #include "color_picker.h"
 #include "settings.h"
@@ -44,7 +44,8 @@ static GLuint u_tl; static point tl = {0, 0};
 static GLuint u_lightness;
 static GLuint vbo;
 void ColorPicker::initializeGL() {
-	glClearColor(0, 0, 0, 0);
+	QOpenGLFunctions* f = context()->functions();
+	f->glClearColor(0, 0, 0, 0);
 
 	program = new QOpenGLShaderProgram;
 	program->addShaderFromSourceCode(QOpenGLShader::Vertex,
@@ -61,7 +62,6 @@ void ColorPicker::initializeGL() {
 	u_zoom = program->uniformLocation("u_zoom");
 	u_tl = program->uniformLocation("u_tl");
 	u_lightness = program->uniformLocation("u_lightness");
-	QOpenGLFunctions* f = context()->functions();
 	f->initializeOpenGLFunctions();
 	GLfloat vertices[] = {
 		0, 0,
@@ -81,8 +81,8 @@ void ColorPicker::initializeGL() {
 void ColorPicker::paintGL() {
 	program->bind();
 	QOpenGLFunctions* f = context()->functions();
-	//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	//glEnable(GL_DEPTH_TEST);
+	//f->glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	//f->glEnable(GL_DEPTH_TEST);
 	program->setUniformValue(u_circle, settings.color_picker_circle);
 	program->setUniformValue(u_disable_shrinking, settings.color_picker_disable_shrinking);
 	program->setUniformValue(u_zoom, (GLfloat)color_picker_zoom);
@@ -91,9 +91,9 @@ void ColorPicker::paintGL() {
 	f->glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	f->glEnableVertexAttribArray(0);
 	f->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
-	glDrawArrays(GL_TRIANGLES, 0, 6);
+	f->glDrawArrays(GL_TRIANGLES, 0, 6);
 	{GLenum err;
-	while((err = glGetError()) != GL_NO_ERROR) {
+	while((err = f->glGetError()) != GL_NO_ERROR) {
 		std::cerr << "Color Picker Error: " << err << std::endl;
 	}}
 	program->release();

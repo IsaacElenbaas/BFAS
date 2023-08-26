@@ -1,7 +1,7 @@
 QT=core widgets opengl
 CONFIG+=c++20
 UTILS=$$files(../util/*.cpp, true)
-LIBS=PFAS.o $$replace(UTILS, .cpp, .o)
+LIBS=BFAS.o $$replace(UTILS, .cpp, .o)
 SOURCES=main.cpp color_picker.cpp settings_UI.cpp
 HEADERS=main.h ../shape.vert ../shape.frag color_picker.h color_picker.vert color_picker.frag settings_UI.h ../settings.h ../util/shapes.h ../types.h
 INCPATH=.. ../util
