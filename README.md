@@ -1,4 +1,5 @@
 # Bezier Flat Art Studio
+### [Windows Binaries](https://github.com/IsaacElenbaas/BFAS/releases)
 ## About
 BFAS is a program for creating art of a "flat" style - i.e. lineless art, even though support for lines is planned.
 
