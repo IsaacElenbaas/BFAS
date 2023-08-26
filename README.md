@@ -28,14 +28,14 @@ To edit a color, select its shape and click on the color point (unless you just 
 ### Quick Layer/Opacity Showcase:  
 
 
-https://github.com/IsaacElenbaas/BFAS/assets/34344969/8e1ce98b-1b2e-4a80-8463-2df30d8f5941
+https://github.com/IsaacElenbaas/BFAS/assets/34344969/18b52622-2a42-4be6-bdf1-a234fdd7473e
 
 
 
 ### Zoom Capabilities:  
 
 
-https://github.com/IsaacElenbaas/BFAS/assets/34344969/2e8b332a-b846-45fa-b442-6a581f790e37
+https://github.com/IsaacElenbaas/BFAS/assets/34344969/df3e3ad5-518f-43b8-929d-5dfebe09615b
 
 
 ## Issues You Should Know About
